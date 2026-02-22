@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="eye" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="55%" stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </radialGradient>
+    <linearGradient id="shaft" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#16a34a"/>
+      <stop offset="100%" stop-color="#065f46"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 56 C 20 44, 28 36, 40 20" stroke="url(#shaft)" stroke-width="3"/>
+    <path d="M40 20 C 48 16, 56 20, 52 28 C 48 36, 36 32, 40 20 Z" fill="#22c55e" opacity="0.6"/>
+    <path d="M40 20 C 46 18, 52 22, 49 28 C 46 34, 36 30, 40 20 Z" fill="#84cc16" opacity="0.7"/>
+    <circle cx="44" cy="26" r="6" fill="url(#eye)"/>
+    <circle cx="44" cy="26" r="2.2" fill="#10b981"/>
+    <path d="M12 54 C 22 44, 30 36, 42 18" stroke="#10b981" opacity="0.5"/>
+    <path d="M14 55 C 24 45, 32 37, 44 19" stroke="#22c55e" opacity="0.35"/>
+  </g>
+</svg>
+
+
+
+
+
+
+
+

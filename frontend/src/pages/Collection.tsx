@@ -1,0 +1,189 @@
+import { useEffect, useMemo, useState } from "react";
+import { Play, Package, Download, ShoppingBag, Book, Sparkles, Calendar } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+import { Button } from "@/components/ui/button";
+import { useFirebase } from "@/contexts/FirebaseContext";
+import { fetchPurchases, subscribeToPurchases } from "@/services/db";
+import { allProducts } from "@/data/products";
+
+type PurchaseItem = {
+  id: string;
+  productId: string;
+  type: "ebook" | "sdcard" | "pendrive";
+  title?: string | null;
+  price?: number | null;
+  imageUrl?: string | null;
+  createdAt?: any;
+};
+
+const Collection = () => {
+  const navigate = useNavigate();
+  const { user } = useFirebase();
+  const [activeFilter, setActiveFilter] = useState<"all" | "ebook" | "sdcard" | "pendrive">("all");
+  const [purchases, setPurchases] = useState<PurchaseItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!user) {
+      setPurchases([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    // Subscribe to purchases in real-time
+    const unsubscribe = subscribeToPurchases(user.uid, (items) => {
+      // Enrich items with product details
+      const enrichedItems = items.map((item: any) => {
+        const product = allProducts.find(p => p.id === item.productId);
+        return {
+          ...item,
+          title: item.title || product?.title || item.productId,
+          imageUrl: item.imageUrl || product?.image,
+          type: item.type || product?.type || "ebook"
+        };
+      });
+
+      setPurchases(enrichedItems as PurchaseItem[]);
+      setLoading(false);
+      console.log(`[Real-time] Collection updated: ${enrichedItems.length} items.`);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const filteredPurchases = useMemo(
+    () =>
+      purchases.filter((item) =>
+        activeFilter === "all" || item.type === activeFilter
+      ),
+    [purchases, activeFilter]
+  );
+
+  const stats = {
+    total: purchases.length,
+    ebooks: purchases.filter((p) => p.type === "ebook").length,
+    sdcards: purchases.filter((p) => p.type === "sdcard").length,
+  };
+
+  return (
+    <div className="min-h-screen bg-background pb-20">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-background border-b border-border">
+        <div className="px-4 md:px-6 h-16 flex items-center justify-between max-w-7xl mx-auto">
+          <h1 className="text-xl md:text-2xl font-serif font-bold text-foreground">My Collection</h1>
+          <div className="flex items-center gap-2 text-xs md:text-sm bg-foreground text-background px-3 md:px-4 py-1.5 md:py-2 rounded-full font-semibold">
+            {stats.total}
+          </div>
+        </div>
+      </header>
+
+      <main className="px-4 md:px-6 pt-6 max-w-7xl mx-auto">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 md:py-32 animate-fade-in px-4">
+            <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-sm text-muted-foreground">Loading your collection...</p>
+          </div>
+        ) : purchases.length > 0 ? (
+          <div className="space-y-6 animate-fade-in">
+            {/* Filters */}
+            <div className="flex gap-2 mb-4">
+              <Button
+                variant={activeFilter === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveFilter("all")}
+              >
+                All ({stats.total})
+              </Button>
+              <Button
+                variant={activeFilter === "ebook" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveFilter("ebook")}
+              >
+                Ebooks ({stats.ebooks})
+              </Button>
+              <Button
+                variant={activeFilter === "sdcard" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveFilter("sdcard")}
+              >
+                SD Cards ({stats.sdcards})
+              </Button>
+            </div>
+
+            {/* List */}
+            <div className="space-y-4">
+              {filteredPurchases.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-4 bg-card border border-border rounded-xl p-4 shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      {item.type === "ebook" ? (
+                        <Download className="w-5 h-5 text-primary" />
+                      ) : (
+                        <Package className="w-5 h-5 text-primary" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {item.title || item.productId}
+                      </p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                        <span className="inline-flex items-center gap-1">
+                          <ShoppingBag className="w-3 h-3" />
+                          {item.type === "ebook" ? "Digital Ebook" : "SD Card"}
+                        </span>
+                        {item.createdAt && (
+                          <span className="inline-flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(item.createdAt.toDate?.() ?? item.createdAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => navigate(`/product/${item.productId}`)}
+                  >
+                    <Play className="w-4 h-4" />
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 md:py-32 animate-fade-in px-4">
+            <div className="w-32 h-32 md:w-40 md:h-40 bg-muted rounded-full flex items-center justify-center mb-6 md:mb-8">
+              <Book className="w-16 h-16 md:w-20 md:h-20 text-muted-foreground" />
+            </div>
+            <h3 className="text-2xl md:3xl font-serif font-bold mb-3 md:mb-4 text-foreground text-center">
+              Your Collection is Empty
+            </h3>
+            <p className="text-sm md:text-base text-muted-foreground text-center max-w-md mb-8 md:mb-10 leading-relaxed">
+              Start your spiritual journey by exploring our authentic Mahabharat collection
+            </p>
+            <Button
+              size="lg"
+              className="gap-2 h-12 md:h-14 px-8 md:px-10 font-semibold text-sm md:text-base transition-all"
+              onClick={() => navigate("/explore")}
+            >
+              <Sparkles className="w-4 h-4 md:w-5 md:h-5" />
+              Explore Collection
+            </Button>
+          </div>
+        )}
+      </main>
+
+
+    </div>
+  );
+};
+
+export default Collection;
