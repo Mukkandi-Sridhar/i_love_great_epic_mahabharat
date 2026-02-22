@@ -78,6 +78,8 @@ const AllProducts = () => {
 
       {/* Hero Section - Clean & Modern */}
       <div className="relative pt-6 pb-8 md:pt-12 md:pb-16 px-4 overflow-hidden">
+
+
         <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent opacity-30" />
 
         <div className="relative z-10 text-center space-y-3">

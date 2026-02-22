@@ -12,7 +12,7 @@ import brandLogo from "@/assets/logo.png";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import { BookOpen, Target, ArrowRight } from "lucide-react";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import ProductMarquee from "@/components/ProductMarquee";
+
 
 
 const Explore = () => {
@@ -20,7 +20,7 @@ const Explore = () => {
 
 
   return (
-    <div className="min-h-screen bg-background pb-0">
+    <div className="min-h-screen bg-background pb-20">
 
 
       {/* Hero Section - Full Width */}
@@ -30,7 +30,7 @@ const Explore = () => {
 
       <div className="w-full max-w-[1400px] mx-auto px-4 md:px-8 space-y-8 md:space-y-12">
         {/* Latest Ebooks */}
-        <section className="animate-fade-in">
+        <section>
           <div className="mb-6 md:mb-8 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -51,11 +51,10 @@ const Explore = () => {
           <div
             className="flex overflow-x-auto gap-4 pb-6 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']"
           >
-            {ebooks.map((product, index) => (
+            {ebooks.map((product) => (
               <div
                 key={product.id}
-                className="min-w-[170px] w-[45vw] md:min-w-0 md:w-auto animate-fade-in"
-                style={{ animationDelay: `${index * 100}ms` }}
+                className="min-w-[170px] w-[45vw] md:min-w-0 md:w-auto"
               >
                 <ProductCard {...product} />
               </div>
@@ -64,12 +63,12 @@ const Explore = () => {
         </section>
 
         {/* Visual Separator */}
-        <div className="animate-fade-in" style={{ animationDelay: "400ms" }}>
+        <div>
           <DivineSeparator />
         </div>
 
         {/* SD Cards Collection */}
-        <section className="animate-fade-in" style={{ animationDelay: "500ms" }}>
+        <section>
           <div className="mb-4 md:mb-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -88,21 +87,29 @@ const Explore = () => {
             </button>
           </div>
 
-          <ProductMarquee products={sdCards} />
+          <div
+            className="flex overflow-x-auto gap-4 pb-6 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide"
+          >
+            {sdCards.map((product) => (
+              <div key={product.id} className="min-w-[170px] w-[45vw] md:min-w-0 md:w-auto">
+                <ProductCard {...product} />
+              </div>
+            ))}
+          </div>
         </section>
 
         {/* Krishna Hero Section */}
-        <div className="animate-fade-in" style={{ animationDelay: "600ms" }}>
+        <div>
           <KrishnaHero />
         </div>
 
         {/* Your Journey to Dharma - Divine Thread Section */}
-        <div className="py-0 animate-fade-in" style={{ animationDelay: "700ms" }}>
+        <div className="py-0">
           <DivineJourney />
         </div>
 
         {/* ULTRA-MODERN: Testimonials Section */}
-        <section className="animate-fade-in pb-0 md:pb-8 relative" style={{ animationDelay: "800ms" }}>
+        <section className="pb-0 md:pb-8 relative">
 
 
           <div className="relative">

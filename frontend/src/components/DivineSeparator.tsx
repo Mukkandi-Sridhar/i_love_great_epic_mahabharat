@@ -6,8 +6,8 @@ const DivineSeparator = () => {
             <div className="w-full max-w-2xl flex items-center gap-6 px-4">
                 {/* Left Gradient Line - Liquid Gold Flowing In */}
                 <div
-                    className="flex-1 h-[1px] md:h-[2px] bg-gradient-to-r from-transparent via-primary/50 via-primary via-primary/50 to-transparent animate-pulse"
-                    style={{ filter: 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.3))' }}
+                    className="flex-1 h-[2px] bg-gradient-to-r from-transparent via-yellow-600/50 via-yellow-200 via-yellow-600/50 to-transparent animate-energy-flow"
+                    style={{ backgroundSize: '200% 100%' }}
                 />
 
                 {/* Central Complex Motif - Realistic Sri Yantra */}
@@ -16,8 +16,8 @@ const DivineSeparator = () => {
                     <img
                         src={sriYantraGold}
                         alt="Sri Chakra Yantra"
-                        className="w-full h-full object-contain animate-spin mix-blend-screen opacity-80"
-                        style={{ animationDuration: '60s', animationTimingFunction: 'linear' }}
+                        className="w-full h-full object-contain animate-spin-slow mix-blend-screen opacity-80"
+                        style={{ animationDuration: '30s', animationTimingFunction: 'linear' }}
                     />
                     {/* Inner Glow */}
                     <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-50 pointer-events-none" />
@@ -25,8 +25,8 @@ const DivineSeparator = () => {
 
                 {/* Right Gradient Line - Liquid Gold Flowing In */}
                 <div
-                    className="flex-1 h-[1px] md:h-[2px] bg-gradient-to-l from-transparent via-primary/50 via-primary via-primary/50 to-transparent animate-pulse"
-                    style={{ filter: 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.3))' }}
+                    className="flex-1 h-[2px] bg-gradient-to-l from-transparent via-yellow-600/50 via-yellow-200 via-yellow-600/50 to-transparent animate-energy-flow"
+                    style={{ backgroundSize: '200% 100%' }}
                 />
 
             </div>

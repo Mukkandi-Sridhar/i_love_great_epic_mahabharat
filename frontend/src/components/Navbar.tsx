@@ -39,6 +39,7 @@ const Navbar = () => {
         setIsSearchOpen(false); // Close search on navigation
     }, [location]);
 
+
     useEffect(() => {
         if (searchQuery.trim()) {
             setSearchResults(searchIndex.search(searchQuery));
@@ -75,6 +76,7 @@ const Navbar = () => {
                     settings?.bannerEnabled ? "mt-9 md:mt-10" : "mt-0"
                 )}
             >
+
                 {/* Mobile Header - Single Row */}
                 <div className="md:hidden flex items-center w-full px-3 h-16">
                     {/* Left: Logo + Brand Name */}

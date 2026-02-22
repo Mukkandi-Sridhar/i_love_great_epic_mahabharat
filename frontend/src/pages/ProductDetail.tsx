@@ -235,6 +235,7 @@ const ProductDetail = () => {
     <div className="min-h-screen bg-background pb-24 md:pb-8">
       {/* Mobile Header */}
       <div className="sticky top-0 z-50 md:hidden bg-black/90 backdrop-blur-xl border-b border-white/5">
+
         <div className="flex items-center justify-between px-4 h-14">
           <button onClick={() => navigate(-1)} className="w-10 h-10 -ml-2 flex items-center justify-center rounded-full hover:bg-white/5 transition-colors">
             <ArrowLeft className="w-5 h-5 text-white" />
@@ -249,6 +250,7 @@ const ProductDetail = () => {
           </div>
         </div>
       </div>
+
 
       {/* Product Image - Premium Dark Theme */}
       <div className="relative">

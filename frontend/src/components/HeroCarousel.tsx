@@ -49,7 +49,7 @@ const HeroCarousel = () => {
     if (slides.length === 0) return;
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 5000);
+    }, 3000);
     return () => clearInterval(timer);
   }, []);
 
@@ -85,24 +85,28 @@ const HeroCarousel = () => {
             className={`absolute inset-0 transition-opacity duration-1500 ease-in-out ${isActive ? "opacity-100 z-10" : "opacity-0 z-0"
               }`}
           >
-            <div className={`w-full h-full transition-transform duration-[10000ms] ease-out ${isActive ? "scale-110" : "scale-100"}`}>
+            <div className="w-full h-full">
               <img
                 src={slide.image}
                 alt={slide.title}
-                className="w-full h-full object-cover opacity-90 brightness-110 contrast-110 saturate-110"
+                className="w-full h-full object-cover"
               />
             </div>
-            {/* Top Fade - Enhanced for cinematic transition with transparent navbar */}
+
+            {/* Top Fade - Essential for cinematic transition with transparent navbar */}
             <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none" />
 
             {/* Bottom Fade - Seamless Dissolve */}
             <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-background via-background/50 to-transparent" />
 
-            <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8 md:p-12 lg:p-16 flex flex-col items-center text-center z-20 pb-12 md:pb-16">
-              <h2 className={`text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-serif font-bold text-white mb-3 md:mb-6 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] leading-tight transition-all duration-1000 transform ${isActive ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}>
+
+
+
+            <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col items-center text-center z-20 pb-10 md:pb-14">
+              <h2 className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-serif font-bold text-white mb-2 md:mb-4 drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)] leading-tight transition-all duration-1000 transform ${isActive ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}>
                 {slide.title}
               </h2>
-              <p className={`text-base sm:text-lg md:text-xl text-gray-200 max-w-3xl font-medium drop-shadow-md px-4 leading-relaxed transition-all duration-1000 delay-300 transform ${isActive ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}>
+              <p className={`text-sm sm:text-base md:text-lg text-gray-200 max-w-2xl font-medium drop-shadow-md px-4 leading-relaxed transition-all duration-1000 delay-300 transform ${isActive ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}>
                 {slide.subtitle}
               </p>
             </div>
@@ -110,6 +114,8 @@ const HeroCarousel = () => {
         );
       })}
     </div>
+
+
 
   );
 };
