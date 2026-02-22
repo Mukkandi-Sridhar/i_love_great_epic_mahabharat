@@ -86,34 +86,33 @@ const ProductCard = ({ id, image, title, rating, reviewCount = 100, price, origi
       </div>
 
       {/* Content Section */}
-      <div className="flex flex-col flex-grow p-2 md:p-3">
-        {/* Title - Full Length */}
-        <h3 className="font-medium text-[11px] md:text-sm text-white/90 leading-snug mb-1 md:mb-2 group-hover:text-primary transition-colors line-clamp-2">
+      <div className="flex flex-col flex-grow p-3 md:p-4">
+        {/* Title */}
+        <h3 className="font-bold text-sm md:text-base text-white/90 leading-tight mb-2 group-hover:text-primary transition-colors line-clamp-2 uppercase tracking-tight">
           {title}
         </h3>
 
-        {/* Reviews */}
-        <div className="flex items-center gap-1 md:gap-2 mb-1 md:mb-2">
-          <div className="flex items-center gap-0.5 bg-emerald-600 text-white px-1 md:px-1.5 py-0.5 rounded text-[8px] md:text-[10px] font-bold">
+        {/* Reviews - Hidden on mobile in the content section */}
+        <div className="hidden md:flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-0.5 bg-emerald-600 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
             {rating.toFixed(1)}
-            <Star className="w-2 md:w-2.5 h-2 md:h-2.5 fill-white" />
+            <Star className="w-2.5 h-2.5 fill-white" />
           </div>
-          <span className="text-[8px] md:text-[10px] text-gray-500">({formatReviews(reviewCount)})</span>
+          <span className="text-[10px] text-gray-500">({formatReviews(reviewCount)})</span>
         </div>
 
-        {/* Price */}
-        <div className="flex items-baseline gap-1 md:gap-2 mb-1">
-          <span className="text-sm md:text-lg font-bold text-white">₹{price}</span>
-          <span className="text-[10px] md:text-xs text-gray-500 line-through">₹{calcOriginalPrice}</span>
-          <span className="text-[8px] md:text-[10px] text-emerald-400 font-semibold">{discount}% off</span>
+        {/* Price - Hidden on mobile in the content section */}
+        <div className="hidden md:flex items-baseline gap-2 mb-3">
+          <span className="text-lg font-bold text-white">₹{price}</span>
+          <span className="text-xs text-gray-500 line-through">₹{calcOriginalPrice}</span>
+          <span className="text-[10px] text-emerald-400 font-semibold">{discount}% off</span>
         </div>
 
-        {/* Deal Badge */}
-        <div className="flex items-center gap-1 mt-auto pt-1 md:pt-2 border-t border-white/5">
-          <Zap className="w-2.5 md:w-3 h-2.5 md:h-3 text-primary fill-primary" />
-          <span className="text-[8px] md:text-[10px] text-primary font-medium">Limited Time Deal</span>
+        {/* Deal Badge - Hidden on mobile */}
+        <div className="hidden md:flex items-center gap-2 mt-auto pt-4 border-t border-white/5">
+          <Zap className="w-3 h-3 text-primary fill-primary" />
+          <span className="text-[10px] text-primary font-bold uppercase tracking-wider">Limited Time Deal</span>
         </div>
-
       </div>
     </div>
   );
