@@ -1,0 +1,86 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if the requesting user is an admin
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // ─── USER DATA ───────────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      // Admins can read any user profile and manage them
+      allow read, update: if isAdmin();
+
+      // Orders: user can read their own; only backend writes
+      match /orders/{orderId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+
+      // Purchases: user can read to check what they own; only backend writes
+      match /purchases/{productId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow read, write: if isAdmin(); 
+      }
+
+      // Notifications: user can read; only backend writes
+      match /notifications/{notifId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // ─── ADMIN COLLECTIONS ───────────────────────────────────────────────────
+    // orders_index: flat list of all orders — admin read/update, backend writes
+    match /orders_index/{orderId} {
+      allow read, update: if isAdmin();
+      allow write: if false;
+    }
+
+    // tickets: users can submit; admins can read/update; backend manages
+    match /tickets/{ticketId} {
+      allow create: if request.auth != null;
+      allow read, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // products: everyone can read; only admin writes
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // coupons: admins can manage; public can read for validation
+    match /coupons/{code} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // settings: everyone can read app settings; admins can write
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // audit_logs: admin only
+    match /audit_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // admins: each admin can read their own doc to check access
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Block everything else by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,31 @@
+Section A  
+mon - P1-ML LAB ; P2-ML LAB ; P3-DBMS ; P4-DBMS ; P5-sem ; P6-DL&CO ; P7-DL&CO  
+tue - P1-DBMS LAB ; P2-DBMS LAB ; P3-sem ; P4-sem ; P5-OT ; P6-OT ; P7-sem  
+wed - P1-P&S ; P2-P&S ; P3-sem ; P4-sem ; P5-DBMS LAB ; P6-DBMS LAB ; P7-sem  
+thu - P1-DBMS ; P2-DBMS ; P3-DL&CO ; P4-DL&CO ; P5-DTI ; P6-ML ; P7-ML  
+fri - P1-ML LAB ; P2-ML LAB ; P3-P&S ; P4-P&S ; P5-sem ; P6-OT ; P7-OT  
+sat - P1-ML ; P2-ML ; P3-sem ; P4-sem ; P5-DTI ; P6-DTI ; P7-sem  
+
+Section B  
+mon - P1-DBMS LAB ; P2-DBMS LAB ; P3-sem ; P4-sem ; P5-OT ; P6-OT ; P7-sem  
+tue - P1-P&S ; P2-P&S ; P3-sem ; P4-sem ; P5-DBMS ; P6-DBMS ; P7-sem  
+wed - P1-DBMS ; P2-DBMS ; P3-DL&CO ; P4-DL&CO ; P5-DTI ; P6-ML ; P7-ML  
+thu - P1-ML LAB ; P2-ML LAB ; P3-P&S ; P4-P&S ; P5-sem ; P6-OT ; P7-OT  
+fri - P1-ML ; P2-ML ; P3-sem ; P4-sem ; P5-DTI ; P6-DTI ; P7-sem  
+sat - P1-DBMS LAB ; P2-DBMS LAB ; P3-sem ; P4-sem ; P5-OT ; P6-OT ; P7-sem  
+
+Section C  
+mon - P1-DBMS ; P2-DBMS ; P3-DL&CO ; P4-DL&CO ; P5-DTI ; P6-ML ; P7-ML  
+tue - P1-ML LAB ; P2-ML LAB ; P3-P&S ; P4-P&S ; P5-sem ; P6-OT ; P7-OT  
+wed - P1-ML ; P2-ML ; P3-sem ; P4-sem ; P5-DTI ; P6-DTI ; P7-sem  
+thu - P1-DBMS LAB ; P2-DBMS LAB ; P3-sem ; P4-sem ; P5-OT ; P6-OT ; P7-sem  
+fri - P1-P&S ; P2-P&S ; P3-sem ; P4-sem ; P5-DBMS ; P6-DBMS ; P7-sem  
+sat - P1-DBMS ; P2-DBMS ; P3-DL&CO ; P4-DL&CO ; P5-DTI ; P6-ML ; P7-ML  
+
+Section D  
+mon - P1-ML ; P2-ML ; P3-sem ; P4-sem ; P5-DTI ; P6-DTI ; P7-sem  
+tue - P1-DBMS LAB ; P2-DBMS LAB ; P3-sem ; P4-sem ; P5-OT ; P6-OT ; P7-sem  
+wed - P1-P&S ; P2-P&S ; P3-sem ; P4-sem ; P5-DBMS ; P6-DBMS ; P7-sem  
+thu - P1-DBMS ; P2-DBMS ; P3-DL&CO ; P4-DL&CO ; P5-DTI ; P6-ML ; P7-ML  
+fri - P1-ML LAB ; P2-ML LAB ; P3-P&S ; P4-P&S ; P5-sem ; P6-OT ; P7-OT  
+sat - P1-ML ; P2-ML ; P3-sem ; P4-sem ; P5-DTI ; P6-DTI ; P7-sem  

@@ -1,0 +1,63 @@
+# COMPANY POLICIES & KNOWLEDGE BASE: I LOVE GREAT EPIC MAHABHARAT
+Last Updated: 2026-02-21
+
+## 1. COMPANY OVERVIEW (ABOUT US)
+Platform Name: I Love Great Epic Mahabharat
+Operated by: Dharma Divine Enterprises
+Headquarters: Varanasi, Uttar Pradesh, India
+Brand Mission: To bridge ancient Vedic wisdom with the digital age, preserving and making the Mahabharata's teachings accessible to modern seekers.
+Core Values: Authenticity, Spiritual Depth, Community, and Preservation of Dharma.
+
+---
+
+## 2. PRIVACY POLICY SUMMARY
+- Data Collection: We collect name, email, and phone for account management and order fulfillment.
+- Authentication: Handled securely via Google Firebase (Google login, Email/Password).
+- Payment Security: We do not store credit card data. All transactions are handled by Stripe or Razorpay.
+- Data Usage: Information is used to process orders, send updates, and improve user experience.
+- Your Rights: Users can request data access, correction, or deletion by emailing legal@mahabharat.com.
+
+---
+
+## 3. TERMS & CONDITIONS
+- Intellectual Property: All content (Ebooks, PDFs, Audio) is the exclusive property of Dharma Divine Enterprises and protected by international copyright laws.
+- User Responsibility: Users must provide accurate information and are responsible for their account security.
+- Liability: The service is provided "as-is". We are not liable for incidental damages arising from service usage.
+- Governing Law: Any legal disputes are subject to the laws of India.
+
+---
+
+## 4. SHIPPING & LOGISTICS
+### Domestic Shipping (India):
+- Metro Cities: 3-5 business days.
+- Non-Metro/Rural: 5-8 business days.
+### International Shipping:
+- Delivery Time: 10-15 business days (customs dependent).
+- Responsibility: Customer is responsible for destination customs duties/taxes.
+### General Processing:
+- Physical Products (SD Cards): Processed in 24-48 hours. Tracking provided via email.
+- Digital Products: Instant delivery via email and user library.
+
+---
+
+## 5. REFUNDS & CANCELLATIONS
+### Digital Products (Ebooks/PDFs):
+- All sales of digital content are FINAL. No refunds after access/download.
+- Exceptions: Proven technical defects preventing access.
+### Physical Products (SD Cards):
+- Return window: 7 days from delivery.
+- Condition: Must be sealed, unused, and in original packaging.
+- Damages: Report within 48 hours for immediate replacement.
+### Cancellations:
+- Physical: Cancel within 12 hours of order (if not shipped).
+- Digital: No cancellations after payment confirmation.
+### Refund Timeline:
+- Approved refunds are credited to the original payment method in 5-7 business days.
+
+---
+
+## 6. SUPPORT & CONTACT
+- Primary Support: Raise a ticket via the "Support" page in the app.
+- Email: support@mahabharat.com
+- Legal Inquiries: legal@mahabharat.com
+- Business Hours: Mon-Sat, 9AM-6PM IST.

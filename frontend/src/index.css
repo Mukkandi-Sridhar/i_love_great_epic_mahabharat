@@ -1,0 +1,286 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 0 0% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 0 0% 3.9%;
+        --card-foreground: 0 0% 98%;
+        --popover: 0 0% 3.9%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 47 100% 50%;
+        --primary-foreground: 26 83.3% 14.1%;
+        --secondary: 47 100% 50%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 0 0% 14.9%;
+        --muted-foreground: 0 0% 63.9%;
+        --accent: 0 0% 14.9%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 0 0% 14.9%;
+        --input: 0 0% 14.9%;
+        --ring: 0 0% 83.1%;
+        --radius: 0.5rem;
+    }
+}
+
+@layer utilities {
+    .text-gradient-primary {
+        @apply bg-clip-text text-transparent bg-gradient-to-r from-[#FFD700] via-[#FDB931] to-[#FFD700];
+    }
+
+    .glass {
+        @apply bg-black/40 backdrop-blur-md border-b border-white/10;
+    }
+
+    .glass-dock {
+        @apply bg-black/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(255, 215, 0, 0.2);
+        border-radius: 10px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 215, 0, 0.4);
+    }
+}
+
+/* 3D Book Effects - V10 GOLD STANDARD (Physically Accurate Box Model) */
+/* -------------------------------------------------------------------------- */
+/*                            V10 REFERENCE GEOMETRY                          */
+/* -------------------------------------------------------------------------- */
+
+:root {
+    --book-depth: 40px;
+    /* Standard Desktop Thickness */
+    --book-color: #1a1a1a;
+    --page-color: #fdfbf7;
+}
+
+/* Mobile Responsive Depth: Thinner spine for smaller screens so it fits better */
+@media (max-width: 768px) {
+    :root {
+        --book-depth: 24px;
+    }
+}
+
+.book-scene {
+    perspective: 1500px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+}
+
+/* The Book System */
+.book {
+    position: relative;
+    transform-style: preserve-3d;
+    transform: rotateY(-30deg) rotateX(5deg);
+    transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.book-scene:hover .book {
+    transform: rotateY(-15deg) rotateX(10deg) translateZ(calc(var(--book-depth) / 2));
+}
+
+/* --- FACES --- */
+/* FRONT COVER */
+.face-front {
+    position: absolute;
+    inset: 0;
+    transform: translateZ(calc(var(--book-depth) / 2));
+    border-radius: 1px 2px 2px 1px;
+    background-color: var(--book-color);
+    backface-visibility: hidden;
+
+    /* Gloss Effect */
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.1) 100%);
+        pointer-events: none;
+    }
+}
+
+/* SPINE GROOVE */
+.effect-spine-groove {
+    position: absolute;
+    left: 12px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(0, 0, 0, 0.2);
+    box-shadow: 1px 0 1px rgba(255, 255, 255, 0.1);
+    z-index: 10;
+}
+
+/* BACK COVER */
+.face-back {
+    position: absolute;
+    inset: 0;
+    transform: rotateY(180deg) translateZ(calc(var(--book-depth) / 2));
+    background-color: var(--book-color);
+    border-radius: 1px 2px 2px 1px;
+}
+
+/* SPINE */
+.face-spine {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--book-depth);
+    transform-origin: left;
+    transform: rotateY(-90deg) translateX(calc(var(--book-depth) / -2));
+
+    background: var(--book-color);
+    border-radius: 1px;
+
+    /* Spine Lighting */
+    background-image: linear-gradient(90deg,
+            rgba(255, 255, 255, 0.2) 0%,
+            rgba(0, 0, 0, 0.1) 30%,
+            rgba(0, 0, 0, 0.3) 60%,
+            rgba(255, 255, 255, 0.1) 100%);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.spine-title {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    max-height: 80%;
+}
+
+/* PAGES - CONTAINER */
+.book-pages-container {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    bottom: 3px;
+    right: 3px;
+    transform-style: preserve-3d;
+}
+
+/* PREMIUM GILDED PAGE TEXTURES */
+.pages-right {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: calc(var(--book-depth) - 4px);
+    transform: rotateY(90deg) translateZ(calc((var(--book-depth) - 4px) / 2));
+
+    /* Gold/Cream Gradient Mix */
+    background:
+        linear-gradient(to right, rgba(0, 0, 0, 0.15) 0%, rgba(255, 245, 230, 0) 20%, rgba(255, 245, 230, 0) 80%, rgba(0, 0, 0, 0.15) 100%),
+        linear-gradient(90deg, #fffcf5 0%, #f4e4bc 50%, #fffcf5 100%),
+        repeating-linear-gradient(90deg,
+            transparent 0px, transparent 2px,
+            rgba(0, 0, 0, 0.03) 2px, rgba(0, 0, 0, 0.03) 4px);
+    background-blend-mode: multiply, normal, normal;
+    box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.05);
+}
+
+.pages-top {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: calc(var(--book-depth) - 4px);
+    transform: rotateX(90deg) translateZ(calc((var(--book-depth) - 4px) / 2));
+
+    background:
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 0%, rgba(255, 245, 230, 0) 20%, rgba(255, 245, 230, 0) 80%, rgba(0, 0, 0, 0.15) 100%),
+        linear-gradient(180deg, #fffcf5 0%, #f4e4bc 50%, #fffcf5 100%),
+        repeating-linear-gradient(0deg,
+            transparent 0px, transparent 2px,
+            rgba(0, 0, 0, 0.03) 2px, rgba(0, 0, 0, 0.03) 4px);
+    background-blend-mode: multiply, normal, normal;
+}
+
+.pages-bottom {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--book-depth) - 4px);
+    transform: rotateX(-90deg) translateZ(calc((var(--book-depth) - 4px) / 2));
+
+    background:
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.1) 100%),
+        linear-gradient(180deg, #f4e4bc 0%, #dbc493 100%),
+        repeating-linear-gradient(0deg,
+            transparent 0px, transparent 2px,
+            rgba(0, 0, 0, 0.05) 2px, rgba(0, 0, 0, 0.05) 4px);
+    background-blend-mode: multiply, normal, normal;
+}
+
+
+/* SHADOW */
+.book-shadow {
+    position: absolute;
+    width: 90%;
+    height: 40px;
+    left: 5%;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    filter: blur(20px);
+    transform: rotateX(90deg) translateZ(-50px);
+    opacity: 0.6;
+    transition: all 0.6s ease;
+}
+
+.book-scene:hover .book-shadow {
+    opacity: 0.4;
+    transform: rotateX(90deg) translateZ(-80px) scale(0.9);
+}
+
+/* --- DIVINE ANIMATIONS --- */
+@keyframes energy-flow {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    100% {
+        background-position: 200% 50%;
+    }
+}
+
+.animate-energy-flow {
+    background-size: 200% 100%;
+    animation: energy-flow 3s linear infinite;
+}
