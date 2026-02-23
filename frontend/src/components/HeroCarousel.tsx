@@ -73,7 +73,7 @@ const HeroCarousel = () => {
 
   return (
     <div
-      className="relative w-full h-[65vh] sm:h-[500px] md:h-[600px] lg:h-[700px] overflow-hidden bg-black group"
+      className="relative w-full h-[500px] md:h-[600px] lg:h-[650px] overflow-hidden bg-black"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -82,31 +82,31 @@ const HeroCarousel = () => {
         return (
           <div
             key={index}
-            className={`absolute inset-0 transition-opacity duration-1500 ease-in-out ${isActive ? "opacity-100 z-10" : "opacity-0 z-0"
-              }`}
+            className={`absolute inset-0 ${isActive ? "opacity-100 z-10" : "opacity-0 z-0"}`}
+            style={{ transition: 'none', transform: 'none' }}
           >
+
             <div className="w-full h-full">
               <img
                 src={slide.image}
                 alt={slide.title}
-                className="w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-cover object-top pointer-events-none select-none"
+                style={{ top: 0, transform: 'none', transition: 'none' }}
               />
             </div>
 
-            {/* Top Fade - Essential for cinematic transition with transparent navbar */}
-            <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none" />
-
-            {/* Bottom Fade - Seamless Dissolve */}
-            <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-background via-background/50 to-transparent" />
+            {/* Bottom Fade - Only gradient at the bottom for text readability */}
+            <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-background via-background/60 to-transparent" />
 
 
 
 
-            <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col items-center text-center z-20 pb-10 md:pb-14">
-              <h2 className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-serif font-bold text-white mb-2 md:mb-4 drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)] leading-tight transition-all duration-1000 transform ${isActive ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}>
+
+            <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col items-center text-center z-20 pb-12 md:pb-16">
+              <h2 className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-serif font-bold text-white mb-2 md:mb-4 drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)] leading-tight ${isActive ? "opacity-100" : "opacity-0"}`}>
                 {slide.title}
               </h2>
-              <p className={`text-sm sm:text-base md:text-lg text-gray-200 max-w-2xl font-medium drop-shadow-md px-4 leading-relaxed transition-all duration-1000 delay-300 transform ${isActive ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}>
+              <p className={`text-sm sm:text-base md:text-lg text-gray-200 max-w-2xl font-medium drop-shadow-md px-4 leading-relaxed ${isActive ? "opacity-100" : "opacity-0"}`}>
                 {slide.subtitle}
               </p>
             </div>

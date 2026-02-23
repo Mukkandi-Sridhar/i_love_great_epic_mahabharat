@@ -19,8 +19,20 @@ const Navbar = () => {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const { settings } = useSettings();
 
+    const tickerLines = [
+        "నా దేశం భగవద్గీత...!",
+        "నా దేశం అగ్ని పునీత సీత!",
+        "నా దేశం కరుణాంతరంగ...!",
+        "నా దేశం సంస్కార గంగ!",
+        "నమస్తే 🙏🏽",
+    ];
+    const [tickerIndex, setTickerIndex] = useState(0);
+
     useEffect(() => {
-        // Removed scrolling text interval
+        const interval = setInterval(() => {
+            setTickerIndex(prev => (prev + 1) % tickerLines.length);
+        }, 2500);
+        return () => clearInterval(interval);
     }, []);
 
     // Initialize Search Index
@@ -71,30 +83,49 @@ const Navbar = () => {
             )}
             <header
                 className={cn(
-                    "fixed top-0 left-0 right-0 z-50 transition-all duration-500",
+                    "fixed top-0 left-0 right-0 z-50",
                     isScrolled ? "glass shadow-elegant border-none" : "bg-transparent",
                     settings?.bannerEnabled ? "mt-9 md:mt-10" : "mt-0"
                 )}
             >
 
-                {/* Mobile Header - Single Row */}
-                <div className="md:hidden flex items-center w-full px-3 h-16">
-                    {/* Left: Logo + Brand Name */}
-                    <Link to="/" className="flex items-center gap-2 shrink-0">
-                        <div className="w-10 h-10 flex-shrink-0">
+
+                {/* Mobile Header - Single Row - Optimised for small screens */}
+                <div className="md:hidden flex items-center w-full px-3 h-14 gap-2">
+
+                    {/* Left: Logo + Full Brand Name */}
+                    <Link to="/" className="flex items-center gap-1.5 shrink-0">
+                        <div className="w-7 h-7 flex-shrink-0">
                             <img src={logo} alt="Logo" className="w-full h-full object-cover rounded-full shadow-lg" />
                         </div>
-                        <div className="flex flex-col leading-none">
-                            <span className="text-xs font-serif font-bold text-[#FFD700]">I Love Great</span>
-                            <span className="text-xs font-serif font-bold text-[#FFD700]">Epic Mahabharat</span>
+                        <div className="flex flex-col leading-tight">
+                            <span className="text-[9px] font-serif font-bold text-[#FFD700] whitespace-nowrap">I Love Great</span>
+                            <span className="text-[9px] font-serif font-bold text-[#FFD700] whitespace-nowrap">Epic Mahabharat</span>
                         </div>
                     </Link>
 
-                    {/* Center: Brand Name (Removed Telugu scroll) */}
-                    <div className="flex-1 h-full flex items-center justify-center px-2">
-                        <span className="text-base font-serif font-bold text-[#FFD700]">I Love Great Epic Mahabharat</span>
+                    {/* Center: One-at-a-time Ticker */}
+                    <div className="flex-1 min-w-0 flex items-center justify-center overflow-hidden px-1">
+                        <AnimatePresence mode="wait">
+                            <motion.span
+                                key={tickerIndex}
+                                initial={{ y: -18, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 18, opacity: 0 }}
+                                transition={{ duration: 0.4, ease: "easeInOut" }}
+                                className="text-[11px] font-serif font-bold text-[#FFD700] text-center select-none truncate w-full"
+                            >
+                                {tickerLines[tickerIndex]}
+                            </motion.span>
+                        </AnimatePresence>
                     </div>
+
+                    {/* Right: Cart shortcut */}
+                    <Link to="/all-products" className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 border border-primary/20">
+                        <ShoppingBag className="w-4 h-4 text-primary" />
+                    </Link>
                 </div>
+
 
                 {/* Desktop Header Row */}
                 <div className="hidden md:flex w-full px-8 h-20 items-center gap-8 relative">
@@ -113,8 +144,20 @@ const Navbar = () => {
                         </span>
                     </Link>
 
-                    {/* Desktop Text Carousel (Removed) */}
-                    <div className="flex flex-1 h-12 items-center justify-center overflow-hidden relative">
+                    {/* Desktop: One-at-a-time Ticker */}
+                    <div className="flex-1 h-12 flex items-center justify-center overflow-hidden relative">
+                        <AnimatePresence mode="wait">
+                            <motion.span
+                                key={tickerIndex}
+                                initial={{ y: -28, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 28, opacity: 0 }}
+                                transition={{ duration: 0.45, ease: "easeInOut" }}
+                                className="text-lg font-serif font-bold text-[#FFD700] tracking-widest text-center select-none"
+                            >
+                                {tickerLines[tickerIndex]}
+                            </motion.span>
+                        </AnimatePresence>
                     </div>
 
                     {/* Desktop Navigation & Icons - Grouped Right */}

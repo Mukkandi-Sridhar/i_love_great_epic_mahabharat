@@ -39,9 +39,10 @@ const Layout = ({ children }: LayoutProps) => {
       {showIntro && <IntroOverlay onFinish={handleIntroFinish} />}
       <Navbar />
       <main className={cn(
-        "flex-grow pb-20 md:pb-0 animate-in fade-in duration-500 slide-in-from-bottom-4",
+        "flex-grow pb-20 md:pb-0",
         !(pathname === '/' || pathname === '/explore') && "pt-20"
       )}>
+
         {children}
       </main>
       <div className="block">

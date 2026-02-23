@@ -50,6 +50,7 @@ const CustomCursor = () => {
         <div
             className={`custom-cursor ${isHovering ? "hovering" : ""} hidden md:block`}
             style={{
+                position: 'fixed',
                 left: `${position.x}px`,
                 top: `${position.y}px`,
                 transform: `translate(-50%, -50%)`,
