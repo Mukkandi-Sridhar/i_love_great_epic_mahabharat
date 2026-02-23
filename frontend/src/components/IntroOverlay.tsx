@@ -1,15 +1,7 @@
 import { useEffect, useState } from "react";
 import logo from "@/assets/logo.png";
 
-// Import all critical assets
-import hero1 from "@/assets/hero-new-1.png";
-import hero2 from "@/assets/hero-new-2.png";
-import hero3 from "@/assets/hero-new-3.jpg";
-import hero4 from "@/assets/hero-new-4.png";
-import hero5 from "@/assets/hero-new-5.png";
-import product1 from "@/assets/product-1.png";
-import product2 from "@/assets/product-2.jpg";
-import product4 from "@/assets/product-4.jpg";
+
 
 type IntroOverlayProps = {
   onFinish: () => void;
@@ -32,7 +24,7 @@ const IntroOverlay = ({ onFinish, durationMs = 5000 }: IntroOverlayProps) => {
 
   // Aggressive preloading during intro
   useEffect(() => {
-    const imagesToPreload = [hero1, hero2, hero3, hero4, hero5, product1, product2, product4];
+    const imagesToPreload: string[] = [];
     let loadedCount = 0;
 
     // Preload all images

@@ -1,8 +1,5 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import product1 from '@/assets/product-1.png';
-import product2 from '@/assets/product-2.jpg';
-import product4 from '@/assets/product-4.jpg';
 
 // Preload critical routes for instant navigation
 const routesToPrefetch = [
@@ -41,22 +38,4 @@ export function useRoutePrefetch() {
 
         return () => clearTimeout(timer);
     }, [location.pathname]);
-}
-
-// Aggressive resource preloading
-export function preloadCriticalResources() {
-    // Preload product images
-    const productImages = [
-        product1,
-        product2,
-        product4,
-    ];
-
-    productImages.forEach(src => {
-        const link = document.createElement('link');
-        link.rel = 'prefetch';
-        link.as = 'image';
-        link.href = src;
-        document.head.appendChild(link);
-    });
 }
