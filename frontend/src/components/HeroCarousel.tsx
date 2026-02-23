@@ -1,122 +1,50 @@
-import { useState, useEffect, useRef } from "react";
-import { ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import heroSlide1 from "@/assets/hero-new-1.png";
-import heroSlide2 from "@/assets/hero-new-2.png";
-import heroSlide3 from "@/assets/hero-new-3.jpg";
-import heroSlide4 from "@/assets/hero-new-4.png";
-import heroSlide5 from "@/assets/hero-new-5.png";
-
-const slides = [
-  {
-    image: heroSlide1,
-    title: "The Great Epic Mahabharat",
-    subtitle: "Witness the timeless saga of duty, honor, and destiny.",
-    cta: "Start Listening"
-  },
-  {
-    image: heroSlide2,
-    title: "Divine Wisdom of Krishna",
-    subtitle: "Guidance that transcends time and space.",
-    cta: "Explore Teachings"
-  },
-  {
-    image: heroSlide3,
-    title: "The Battle of Dharma",
-    subtitle: "Where righteousness meets the ultimate test.",
-    cta: "View Episodes"
-  },
-  {
-    image: heroSlide4,
-    title: "Draupadi's Resilience",
-    subtitle: "Strength and dignity in the face of adversity.",
-    cta: "Read More"
-  },
-  {
-    image: heroSlide5,
-    title: "The Pandavas' Journey",
-    subtitle: "From exile to the throne of Hastinapur.",
-    cta: "Discover the Story"
-  },
-];
+import { useRef, useEffect } from "react";
+import heroVideo from "@/assets/video.mp4";
 
 const HeroCarousel = () => {
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const touchStartX = useRef<number | null>(null);
-  const touchEndX = useRef<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (slides.length === 0) return;
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 3000);
-    return () => clearInterval(timer);
+    if (videoRef.current) {
+      videoRef.current.play().catch(() => { });
+    }
   }, []);
 
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchStartX.current = e.changedTouches[0].clientX;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchEndX.current = e.changedTouches[0].clientX;
-    if (touchStartX.current === null || touchEndX.current === null) return;
-    const delta = touchEndX.current - touchStartX.current;
-    if (Math.abs(delta) < 30) return;
-    if (delta > 0) {
-      setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
-    } else {
-      setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }
-  };
-
-  if (slides.length === 0) return null;
-
   return (
-    <div
-      className="relative w-full h-[500px] md:h-[600px] lg:h-[650px] overflow-hidden bg-black"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
-      {slides.map((slide, index) => {
-        const isActive = index === currentSlide;
-        return (
-          <div
-            key={index}
-            className={`absolute inset-0 ${isActive ? "opacity-100 z-10" : "opacity-0 z-0"}`}
-            style={{ transition: 'none', transform: 'none' }}
-          >
+    /* Fixed height hero — video fills it with object-top so faces are never trimmed */
+    <div className="relative w-full h-[55vw] min-h-[280px] max-h-[85vh] overflow-hidden bg-black">
+      <video
+        ref={videoRef}
+        src={heroVideo}
+        autoPlay
+        muted
+        loop
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover object-top pointer-events-none select-none"
+      />
 
-            <div className="w-full h-full">
-              <img
-                src={slide.image}
-                alt={slide.title}
-                className="absolute inset-0 w-full h-full object-cover object-top pointer-events-none select-none"
-                style={{ top: 0, transform: 'none', transition: 'none' }}
-              />
-            </div>
+      {/* Top fade — keeps transparent navbar readable */}
+      <div
+        className="absolute inset-x-0 top-0 pointer-events-none h-28"
+        style={{ background: "linear-gradient(to bottom, rgba(10,10,10,0.55), transparent)" }}
+      />
 
-            {/* Bottom Fade - Only gradient at the bottom for text readability */}
-            <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-background via-background/60 to-transparent" />
+      {/* Cinematic bottom fade */}
+      <div
+        className="absolute inset-x-0 bottom-0 pointer-events-none"
+        style={{
+          height: "45%",
+          background:
+            "linear-gradient(to top, #0a0a0a 0%, rgba(10,10,10,0.85) 25%, rgba(10,10,10,0.5) 55%, rgba(10,10,10,0.15) 80%, transparent 100%)",
+        }}
+      />
 
-
-
-
-
-            <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col items-center text-center z-20 pb-12 md:pb-16">
-              <h2 className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-serif font-bold text-white mb-2 md:mb-4 drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)] leading-tight ${isActive ? "opacity-100" : "opacity-0"}`}>
-                {slide.title}
-              </h2>
-              <p className={`text-sm sm:text-base md:text-lg text-gray-200 max-w-2xl font-medium drop-shadow-md px-4 leading-relaxed ${isActive ? "opacity-100" : "opacity-0"}`}>
-                {slide.subtitle}
-              </p>
-            </div>
-          </div>
-        );
-      })}
+      {/* Side fades */}
+      <div className="absolute inset-y-0 left-0 pointer-events-none w-12"
+        style={{ background: "linear-gradient(to right, #0a0a0a, transparent)" }} />
+      <div className="absolute inset-y-0 right-0 pointer-events-none w-12"
+        style={{ background: "linear-gradient(to left, #0a0a0a, transparent)" }} />
     </div>
-
-
-
   );
 };
 

@@ -23,13 +23,10 @@ const Explore = () => {
     <div className="min-h-screen bg-background pb-20">
 
 
-      {/* Hero Section - Full Width - Isolated from all mouse events */}
-      <section className="relative h-[500px] md:h-[600px] lg:h-[650px] w-full overflow-hidden pointer-events-none select-none">
+      {/* Hero Section - Full Width */}
+      <section className="relative w-full overflow-hidden pointer-events-none select-none">
         <HeroCarousel />
       </section>
-
-
-
 
       <div className="w-full max-w-[1400px] mx-auto px-4 md:px-8 space-y-8 md:space-y-12">
         {/* Latest Ebooks */}
