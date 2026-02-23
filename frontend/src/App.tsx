@@ -51,17 +51,14 @@ import Layout from "./components/Layout";
 
 import DivineBackground from "./components/DivineBackground";
 import CustomCursor from "./components/CustomCursor";
-import { useRoutePrefetch, preloadCriticalResources } from "./hooks/usePrefetch";
+import { useRoutePrefetch } from "./hooks/usePrefetch";
 
 import BackgroundMusic from "./components/BackgroundMusic";
 
 const AppProviders = ({ children }: { children: ReactNode }) => {
   const { settings, loading: settingsLoading } = useSettings();
 
-  // Preload critical resources on mount
-  useEffect(() => {
-    preloadCriticalResources();
-  }, []);
+
 
   if (settingsLoading) return null;
 

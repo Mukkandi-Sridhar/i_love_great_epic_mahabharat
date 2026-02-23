@@ -105,7 +105,7 @@ const Navbar = () => {
                     </Link>
 
                     {/* Center: One-at-a-time Ticker */}
-                    <div className="flex-1 min-w-0 flex items-center justify-center overflow-hidden px-1">
+                    <div className="flex-1 min-w-0 flex items-center justify-center overflow-hidden px-2">
                         <AnimatePresence mode="wait">
                             <motion.span
                                 key={tickerIndex}
@@ -113,7 +113,7 @@ const Navbar = () => {
                                 animate={{ y: 0, opacity: 1 }}
                                 exit={{ y: 18, opacity: 0 }}
                                 transition={{ duration: 0.4, ease: "easeInOut" }}
-                                className="text-[11px] font-serif font-bold text-[#FFD700] text-center select-none truncate w-full"
+                                className="text-[12px] leading-snug font-serif font-bold text-[#FFD700] text-center select-none line-clamp-2 w-full"
                             >
                                 {tickerLines[tickerIndex]}
                             </motion.span>
@@ -333,7 +333,7 @@ const Navbar = () => {
                 <div className="flex items-center justify-around h-16 px-2">
                     {[
                         { name: 'Explore', path: '/', icon: Compass },
-                        { name: 'Store', path: '/all-products', icon: Store },
+                        { name: 'Ebooks', path: '/all-products?type=ebooks', icon: Store },
                         { name: 'Support', path: '/support', icon: Headphones },
                         { name: 'Account', path: '/profile', icon: User },
                     ].map((item) => {
