@@ -284,3 +284,283 @@
     background-size: 200% 100%;
     animation: energy-flow 3s linear infinite;
 }
+
+/* ============================================================ */
+/*              INTRO OVERLAY — CINEMATIC ANIMATIONS            */
+/* ============================================================ */
+
+/* Ember particles rising upward with gentle sway */
+@keyframes ember-rise {
+    0% {
+        transform: translateY(0) translateX(0) scale(1);
+        opacity: 0.8;
+    }
+
+    30% {
+        transform: translateY(-30vh) translateX(12px) scale(0.85);
+        opacity: 0.6;
+    }
+
+    60% {
+        transform: translateY(-60vh) translateX(-8px) scale(0.65);
+        opacity: 0.35;
+    }
+
+    100% {
+        transform: translateY(-100vh) translateX(5px) scale(0.2);
+        opacity: 0;
+    }
+}
+
+/* Logo shine sweep — light travels left to right across portrait */
+@keyframes shine-sweep {
+    0% {
+        left: -100%;
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    80% {
+        opacity: 1;
+    }
+
+    100% {
+        left: 120%;
+        opacity: 0;
+    }
+}
+
+/* Letter slam — scale down from big with slight bounce */
+@keyframes letter-slam {
+    0% {
+        opacity: 0;
+        transform: scale(2.5) translateY(-20px);
+        filter: blur(6px);
+    }
+
+    60% {
+        opacity: 1;
+        transform: scale(0.92) translateY(4px);
+        filter: blur(0);
+    }
+
+    80% {
+        transform: scale(1.06) translateY(-2px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* Typewriter cursor blink */
+@keyframes blink {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0;
+    }
+}
+
+/* Progress bar fill */
+@keyframes progress-fill {
+    0% {
+        width: 0%;
+    }
+
+    10% {
+        width: 8%;
+    }
+
+    40% {
+        width: 45%;
+    }
+
+    70% {
+        width: 72%;
+    }
+
+    90% {
+        width: 92%;
+    }
+
+    100% {
+        width: 100%;
+    }
+}
+
+/* OM symbol: fade in, slow spin, fade out */
+@keyframes om-appear {
+    0% {
+        opacity: 0;
+        transform: scale(0.4) rotate(-30deg);
+        filter: blur(12px);
+    }
+
+    40% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+        filter: blur(0);
+    }
+
+    70% {
+        opacity: 1;
+        transform: scale(1.05) rotate(8deg);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.2) rotate(15deg);
+        filter: blur(6px);
+    }
+}
+
+/* Sacred geometry rays pulse */
+@keyframes ray-pulse {
+
+    0%,
+    100% {
+        opacity: 0.15;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale(1.12);
+    }
+}
+
+/* Fog atmospheric drift */
+@keyframes fog-flow {
+    0% {
+        transform: translateX(-5%) scale(1);
+    }
+
+    50% {
+        transform: translateX(5%) scale(1.05);
+    }
+
+    100% {
+        transform: translateX(-5%) scale(1);
+    }
+}
+
+/* Bounce-in for logo drop */
+@keyframes bounce-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.5) translateY(-40px);
+    }
+
+    60% {
+        opacity: 1;
+        transform: scale(1.08) translateY(6px);
+    }
+
+    80% {
+        transform: scale(0.96) translateY(-3px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* Slide up for subtitle */
+@keyframes slide-up {
+    0% {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Scale in */
+@keyframes scale-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.7);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Fade in */
+@keyframes fade-in {
+    0% {
+        opacity: 0;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
+/* Pulse gold glow */
+@keyframes pulse-gold {
+
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: scale(1.15);
+    }
+}
+
+/* Letter reveal (original — keep for compatibility) */
+@keyframes letter-reveal {
+    0% {
+        opacity: 0;
+        transform: translateY(60px) rotate(8deg) scale(0.5);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) rotate(0deg) scale(1);
+    }
+}
+
+/* Utility classes */
+.animate-bounce-in {
+    animation: bounce-in 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-slide-up {
+    animation: slide-up 0.7s ease both;
+}
+
+.animate-scale-in {
+    animation: scale-in 0.6s ease both;
+}
+
+.animate-fade-in {
+    animation: fade-in 0.8s ease both;
+}
+
+.animate-pulse-gold {
+    animation: pulse-gold 2.5s ease-in-out infinite;
+}
+
+.animate-fog-flow {
+    animation: fog-flow 10s ease-in-out infinite;
+}

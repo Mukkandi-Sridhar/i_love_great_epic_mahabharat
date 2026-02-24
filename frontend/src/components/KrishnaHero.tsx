@@ -45,13 +45,12 @@ const KrishnaHero = () => {
                 perspective: "1000px"
             }}
         >
-            {/* Top gradient border - Fixed position */}
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent pointer-events-none z-20" />
-            <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-black to-transparent pointer-events-none z-10" />
+            <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-[#0a0a0a] to-transparent pointer-events-none z-10" />
 
-            {/* Bottom gradient border - Fixed position */}
+            {/* Bottom gradient border — Matched to #0a0a0a background */}
             <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent pointer-events-none z-20" />
-            <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-background via-black to-transparent pointer-events-none z-10" />
+            <div className="absolute bottom-0 left-0 right-0 h-60 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent pointer-events-none z-10" />
 
             {/* Parallax Background Layer - Only for particles/decorations if needed */}
             <motion.div
@@ -171,9 +170,9 @@ const KrishnaHero = () => {
                         key={i}
                         r="4"
                         fill="#FFD700"
-                        initial={{ offsetdistance: "0%", opacity: 0 }}
+                        initial={{ offsetDistance: "0%", opacity: 0 }}
                         animate={{
-                            offsetdistance: "100%",
+                            offsetDistance: "100%",
                             opacity: [0, 1, 1, 0]
                         }}
                         transition={{
@@ -213,9 +212,9 @@ const KrishnaHero = () => {
                                 viewport={{ once: true }}
                                 transition={{ duration: 0.8, delay: 0.4 }}
                             />
-                            {/* Subtle black gradient fade around image */}
-                            <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black opacity-20 pointer-events-none" />
-                            <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black opacity-15 pointer-events-none" />
+                            {/* Subtle background-matched gradient fade around image */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-transparent to-[#0a0a0a] opacity-20 pointer-events-none" />
+                            <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a] via-transparent to-[#0a0a0a] opacity-15 pointer-events-none" />
                         </div>
 
                         {/* Circular scrolling text */}
