@@ -7,14 +7,14 @@ const Support = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="relative min-h-screen flex flex-col bg-background overflow-hidden">
+    <div className="relative flex flex-col bg-background">
       {/* Background Effects */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-background to-background pointer-events-none" />
 
-      {/* Floating Back Button */}
-      <div className="absolute top-4 left-4 z-50">
+      {/* Floating Back Button — Adjusted for mobile navbar height */}
+      <div className="absolute top-2 md:top-4 left-4 z-50">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="text-white hover:bg-white/10 rounded-full bg-black/20 backdrop-blur-sm">
-          <ArrowLeft className="w-6 h-6" />
+          <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
         </Button>
       </div>
 

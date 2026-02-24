@@ -40,7 +40,7 @@ const Layout = ({ children }: LayoutProps) => {
       <Navbar />
       <main className={cn(
         "flex-grow pb-20 md:pb-0",
-        !(pathname === '/' || pathname === '/explore') && "pt-20"
+        !(pathname === '/' || pathname === '/explore') && "pt-14 md:pt-20"
       )}>
 
         {children}

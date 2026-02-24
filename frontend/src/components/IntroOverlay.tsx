@@ -168,8 +168,8 @@ const IntroOverlay = ({ onFinish, durationMs = 6000 }: IntroOverlayProps) => {
             </div>
           </div>
 
-          {/* Simple Cinematic Vignette (Fixed Position) */}
-          <div className="absolute inset-0 z-50 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,1)]" />
+          {/* Clean background — removed side vignettes */}
+          <div className="absolute inset-0 z-50 pointer-events-none" />
 
           {/* Inline Styles for the Light Sweep */}
           <style>{`

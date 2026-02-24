@@ -33,13 +33,13 @@ const HeroCarousel = () => {
         style={{ background: "linear-gradient(to bottom, rgba(10,10,10,0.5), transparent)" }}
       />
 
-      {/* Balanced bottom fade — reduced height to 35% for cleaner theme merge */}
+      {/* Balanced bottom fade — reduced height to 25% for ultra-clean theme merge */}
       <div
         className="absolute inset-x-0 bottom-0 pointer-events-none"
         style={{
-          height: "35%",
+          height: "25%",
           background:
-            "linear-gradient(to top, #0a0a0a 0%, rgba(10,10,10,0.8) 35%, rgba(10,10,10,0.3) 70%, transparent 100%)",
+            "linear-gradient(to top, #0a0a0a 0%, rgba(10,10,10,0.7) 40%, transparent 100%)",
         }}
       />
     </div>
