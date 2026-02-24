@@ -11,8 +11,8 @@ const HeroCarousel = () => {
   }, []);
 
   return (
-    /* Fixed height hero — video fills it with object-top so faces are never trimmed */
-    <div className="relative w-full h-[55vw] min-h-[280px] max-h-[85vh] overflow-hidden bg-black">
+    /* Taller mobile hero (120vw) for "big zoom" — video fills it with object-top so faces are never trimmed */
+    <div className="relative w-full h-[120vw] md:h-[55vw] min-h-[460px] md:min-h-[280px] max-h-[90vh] overflow-hidden bg-black">
       <video
         ref={videoRef}
         src={heroVideo}
@@ -29,13 +29,13 @@ const HeroCarousel = () => {
         style={{ background: "linear-gradient(to bottom, rgba(10,10,10,0.55), transparent)" }}
       />
 
-      {/* Cinematic bottom fade */}
+      {/* Cinematic bottom fade — Improved color matching (#0a0a0a) */}
       <div
         className="absolute inset-x-0 bottom-0 pointer-events-none"
         style={{
-          height: "45%",
+          height: "65%",
           background:
-            "linear-gradient(to top, #0a0a0a 0%, rgba(10,10,10,0.85) 25%, rgba(10,10,10,0.5) 55%, rgba(10,10,10,0.15) 80%, transparent 100%)",
+            "linear-gradient(to top, #0a0a0a 0%, rgba(10,10,10,0.95) 20%, rgba(10,10,10,0.7) 45%, rgba(10,10,10,0.3) 75%, transparent 100%)",
         }}
       />
 
