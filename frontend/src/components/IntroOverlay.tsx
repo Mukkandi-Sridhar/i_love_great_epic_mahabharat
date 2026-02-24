@@ -1,194 +1,188 @@
+/**
+ * IntroOverlay — The "Apple / Figma" Refinement
+ * ─────────────────────────────────────────────
+ * Style: Hyper-Minimalist / High-Contrast
+ * Focus: Typographical precision, physical lighting, buttery easing.
+ * No theatrical curtains. No busy particles. No gimmicks.
+ */
+
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import logo from "@/assets/logo.png";
 
-
-
-type IntroOverlayProps = {
+interface IntroOverlayProps {
   onFinish: () => void;
   durationMs?: number;
-};
+}
 
-const IntroOverlay = ({ onFinish, durationMs = 5000 }: IntroOverlayProps) => {
+const IntroOverlay = ({ onFinish, durationMs = 6000 }: IntroOverlayProps) => {
+  const [phase, setPhase] = useState(0);
   const [isExiting, setIsExiting] = useState(false);
-  const [showContent, setShowContent] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [loadingComplete, setLoadingComplete] = useState(false);
 
-  // Lock scroll during intro
   useEffect(() => {
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
+
+    // Phase Choreography (Optimized for speed)
+    const timers = [
+      setTimeout(() => setPhase(1), 50),    // Ambient bloom (almost instant)
+      setTimeout(() => setPhase(2), 500),   // Logo + Subtle ring (at 0.5s)
+      setTimeout(() => setPhase(3), 1200),  // Subtitle (at 1.2s)
+      setTimeout(() => setPhase(4), 1800),  // MAHABHARAT Light Reveal (at 1.8s)
+      setTimeout(() => {
+        setIsExiting(true);
+        setTimeout(onFinish, 1000);
+      }, durationMs - 1000)
+    ];
+
+    if ((window as any).playBackgroundMusic) (window as any).playBackgroundMusic();
+
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = "unset";
+      timers.forEach(clearTimeout);
     };
-  }, []);
+  }, [durationMs, onFinish]);
 
-  // Aggressive preloading during intro
-  useEffect(() => {
-    const imagesToPreload: string[] = [];
-    let loadedCount = 0;
-
-    // Preload all images
-    const preloadPromises = imagesToPreload.map((src) => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          loadedCount++;
-          setLoadingProgress((loadedCount / imagesToPreload.length) * 100);
-          resolve(src);
-        };
-        img.onerror = () => {
-          loadedCount++;
-          setLoadingProgress((loadedCount / imagesToPreload.length) * 100);
-          resolve(src);
-        };
-        img.src = src;
-      });
-    });
-
-    // Wait for all images to load
-    Promise.all(preloadPromises).then(() => {
-      setLoadingComplete(true);
-    });
-
-    // Trigger audio explicitly when intro starts
-    if ((window as any).playBackgroundMusic) {
-      (window as any).playBackgroundMusic();
-    }
-
-    // Prefetch routes in background
-    setTimeout(() => {
-      import("../pages/AllProducts");
-      import("../pages/Support");
-      import("../pages/Profile");
-      import("../pages/Collection");
-    }, 1000);
-  }, []);
-
-  // Only finish when BOTH timer AND loading are complete
-  useEffect(() => {
-    const minTimer = setTimeout(() => {
-      if (loadingComplete) {
-        handleFinish();
-      }
-    }, durationMs);
-
-    return () => clearTimeout(minTimer);
-  }, [durationMs, loadingComplete]);
-
-  // Trigger finish when loading completes after minimum time
-  useEffect(() => {
-    if (loadingComplete) {
-      const currentTime = Date.now();
-      const elapsedTime = currentTime - (window as any)._introStartTime;
-
-      if (elapsedTime >= durationMs) {
-        handleFinish();
-      }
-    }
-  }, [loadingComplete, durationMs]);
-
-  // Track start time
-  useEffect(() => {
-    (window as any)._introStartTime = Date.now();
-  }, []);
-
-  const handleFinish = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      setShowContent(false);
-      onFinish();
-    }, 1000);
-  };
-
-  if (!showContent) return null;
-
-
-
-  const title = "MAHABHARAT";
-  const letters = title.split("");
+  const TITLE = "MAHABHARAT";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-auto touch-none overflow-hidden" style={{ touchAction: 'none' }}>
-      {/* Left Curtain */}
-      <div
-        className={`absolute top-0 left-0 w-1/2 h-full bg-black z-20 transition-transform duration-1000 ease-in-out ${isExiting ? "-translate-x-full" : "translate-x-0"}`}
-        style={{ borderRight: '1px solid rgba(255,215,0,0.1)' }}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_right,_var(--tw-gradient-stops))] from-primary/10 to-transparent opacity-50" />
-      </div>
+    <AnimatePresence>
+      {!isExiting && (
+        <motion.div
+          key="intro-container"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 1.05, filter: "blur(40px)" }}
+          transition={{ duration: 0.9, ease: [0.25, 0.46, 0.45, 0.94] }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black overflow-hidden"
+          style={{ touchAction: "none" }}
+        >
+          {/* ══ Ambient Background (High-End Bloom) ══ */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: phase >= 1 ? 1 : 0, scale: phase >= 1 ? 1 : 0.8 }}
+            transition={{ duration: 2, ease: "easeOut" }}
+            className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none"
+          >
+            {/* Single golden core light */}
+            <div className="w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full bg-[radial-gradient(circle,rgba(255,190,0,0.1)_0%,transparent_70%)] blur-[80px]" />
+          </motion.div>
 
-      {/* Right Curtain */}
-      <div
-        className={`absolute top-0 right-0 w-1/2 h-full bg-black z-20 transition-transform duration-1000 ease-in-out ${isExiting ? "translate-x-full" : "translate-x-0"}`}
-        style={{ borderLeft: '1px solid rgba(255,215,0,0.1)' }}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_var(--tw-gradient-stops))] from-primary/10 to-transparent opacity-50" />
-      </div>
+          {/* ══ Content Structure ══ */}
+          <div className="relative z-10 flex flex-col items-center gap-10 px-8 text-center max-w-4xl">
 
-      {/* Content Container */}
-      <div className={`relative z-30 flex flex-col items-center text-center px-4 transition-opacity duration-500 ${isExiting ? "opacity-0" : "opacity-100"}`}>
+            {/* Logo Section (Restrained) */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{
+                opacity: phase >= 2 ? 1 : 0,
+                y: phase >= 2 ? 0 : 30
+              }}
+              transition={{ duration: 1.2, ease: [0.25, 1, 0.5, 1] }}
+              className="relative"
+            >
+              {/* Ultra-thin precision ring */}
+              <div className="absolute inset-[-8px] rounded-full border-[0.5px] border-white/10" />
 
-        {/* Mystical Fog Background */}
-        <div className="absolute inset-0 w-[200%] h-[200%] -left-[50%] -top-[50%] bg-[radial-gradient(circle,_rgba(255,215,0,0.1)_0%,_transparent_70%)] animate-[fog-flow_10s_infinite_alternate] pointer-events-none" />
+              {/* Logo Portrait (Crisp) */}
+              <div className="w-28 h-28 md:w-40 md:h-40 rounded-full border-white/5 shadow-2xl overflow-hidden bg-black">
+                <img src={logo} alt="Mahabharat" className="w-full h-full object-cover" />
+                {/* Minimalist bottom gradient */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+              </div>
+            </motion.div>
 
-        {/* Logo Reveal */}
-        <div className="mb-8 animate-bounce-in relative">
-          <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full animate-pulse-gold" />
-          <div className="w-32 h-32 md:w-48 md:h-48 rounded-full p-1 bg-gradient-to-br from-primary via-yellow-500 to-transparent shadow-[0_0_60px_rgba(255,215,0,0.4)] relative z-10">
-            <div className="w-full h-full rounded-full overflow-hidden bg-black border-4 border-black relative">
-              <img src={logo} alt="Logo" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-            </div>
-          </div>
-        </div>
+            {/* Typography Section (The Hero) */}
+            <div className="flex flex-col items-center gap-3">
 
-        {/* Text Reveal */}
-        <div className="space-y-2 relative z-10">
-          <h2 className="text-xl md:text-2xl font-medium tracking-[0.3em] text-primary/80 uppercase animate-slide-up" style={{ animationDelay: '0.2s', animationFillMode: 'both' }}>
-            Welcome to the Epic
-          </h2>
+              {/* Subheading (Clean Sans or Light Serif) */}
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: phase >= 3 ? 1 : 0, y: phase >= 3 ? 0 : 10 }}
+                transition={{ duration: 1, ease: "easeOut" }}
+                className="text-[9px] md:text-sm font-['Cinzel'] tracking-[0.5em] text-white/50 uppercase"
+              >
+                Welcome to the Epic
+              </motion.p>
 
-          <div className="relative">
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-white via-primary to-white drop-shadow-lg mb-2 animate-scale-in" style={{ animationDelay: '0.5s', animationFillMode: 'both' }}>
-              I LOVE GREAT EPIC
-            </h1>
-            <div className="flex justify-center gap-1 md:gap-2 overflow-hidden">
-              {letters.map((letter, index) => (
-                <span
-                  key={index}
-                  className="text-5xl md:text-7xl lg:text-9xl font-serif font-bold text-primary drop-shadow-[0_0_30px_rgba(255,215,0,0.6)] inline-block"
+              {/* Main Title — MAHABHARAT (Light Reveal) */}
+              <div className="relative">
+                <motion.h1
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: phase >= 4 ? 1 : 0 }}
+                  transition={{ duration: 1.5, ease: "linear" }}
+                  className="text-5xl md:text-8xl lg:text-9xl font-['Cinzel'] font-bold tracking-tight text-whiteSelection"
                   style={{
-                    animation: `letter-reveal 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards`,
-                    animationDelay: `${0.8 + (index * 0.1)}s`,
-                    opacity: 0
+                    background: "linear-gradient(to right, #ffffff00 0%, #ffffff 50%, #ffffff00 100%)",
+                    backgroundSize: "200% 100%",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                    // The "Light Sweep" effect
+                    animation: phase >= 4 ? "light-sweep 1.4s cubic-bezier(0.25, 1, 0.5, 1) forwards" : "none"
                   }}
                 >
-                  {letter}
-                </span>
-              ))}
+                  {TITLE}
+                </motion.h1>
+
+                {/* Fallback for browsers that don't support text mask perfectly */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: phase >= 4 ? 1 : 0 }}
+                  transition={{ duration: 2, delay: 0.5 }}
+                  className="absolute inset-0 flex items-center justify-center -z-1"
+                >
+                  <h1 className="text-5xl md:text-8xl lg:text-9xl font-['Cinzel'] font-bold tracking-tight text-white/5 blur-sm select-none">
+                    {TITLE}
+                  </h1>
+                </motion.div>
+              </div>
+
+              {/* Tagline (Infinite Wisdom) */}
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: phase >= 4 ? 0.3 : 0 }}
+                transition={{ duration: 2, delay: 1 }}
+                className="text-[7px] md:text-[9px] font-['Cinzel'] tracking-[0.6em] text-white uppercase"
+              >
+                Ancient wisdom. Modern discovery.
+              </motion.p>
+            </div>
+
+            {/* Precision Progress Indicator */}
+            <div className="absolute bottom-[-100px] flex flex-col items-center gap-5">
+              <div className="w-40 h-[1.5px] bg-white/5 relative overflow-hidden rounded-full">
+                <motion.div
+                  initial={{ width: "0%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: (durationMs - 1000) / 1000, ease: "easeInOut" }}
+                  className="absolute inset-y-0 left-0 bg-white"
+                />
+              </div>
+              <motion.span
+                animate={{ opacity: [0.2, 0.4, 0.2] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="text-[7px] tracking-[0.4em] text-white/40 uppercase"
+              >
+                Initializing
+              </motion.span>
             </div>
           </div>
-        </div>
 
-        {/* Loading Indicator with REAL Progress */}
-        <div className="mt-16 animate-fade-in" style={{ animationDelay: '2.5s', animationFillMode: 'both' }}>
-          <div className="h-0.5 w-64 bg-white/10 rounded-full overflow-hidden relative">
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-primary via-yellow-400 to-primary transition-all duration-300 ease-out"
-              style={{ width: `${loadingProgress}%` }}
-            />
-          </div>
-          <p className="mt-4 text-[10px] md:text-xs text-primary/60 uppercase tracking-[0.3em]">
-            {loadingProgress < 100 ? 'Awakening the Legend...' : 'Ready!'}
-          </p>
-          <p className="mt-1 text-[8px] md:text-[10px] text-primary/40">
-            {Math.round(loadingProgress)}%
-          </p>
-        </div>
-      </div>
-    </div>
+          {/* Simple Cinematic Vignette (Fixed Position) */}
+          <div className="absolute inset-0 z-50 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,1)]" />
+
+          {/* Inline Styles for the Light Sweep */}
+          <style>{`
+            @keyframes light-sweep {
+              0% { background-position: -200% 0; opacity: 0; }
+              50% { opacity: 1; }
+              100% { background-position: 0% 0; opacity: 1; }
+            }
+          `}</style>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 
 export default IntroOverlay;
-

@@ -147,6 +147,9 @@ const Explore = () => {
           </div>
         </section>
       </div>
+
+      {/* Premium Bottom Fade transition into Footer — Matched to Theme Background */}
+      <div className="h-64 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none mt-[-160px] relative z-20" />
     </div>
   );
 };
