@@ -12,12 +12,11 @@ const HeroCarousel = () => {
 
   return (
     /* 
-       Updated Hero: 
-       - h-[75vh] on mobile for stable vertical presence without "scaling" jumps.
-       - Removed side fades as requested.
-       - Reduced bottom fade to 35% height for a cleaner merge with the theme.
+       Reduced mobile zoom: 
+       - h-[60vh] for a more balanced presence.
+       - min-h-[340px] to prevent it from being too small.
     */
-    <div className="relative w-full h-[75vh] md:h-[55vw] min-h-[440px] md:min-h-[280px] max-h-[85vh] overflow-hidden bg-[#0a0a0a]">
+    <div className="relative w-full h-[60vh] md:h-[55vw] min-h-[340px] md:min-h-[280px] max-h-[85vh] overflow-hidden bg-[#0a0a0a]">
       <video
         ref={videoRef}
         src={heroVideo}
