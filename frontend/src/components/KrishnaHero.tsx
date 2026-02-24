@@ -206,15 +206,11 @@ const KrishnaHero = () => {
                                 src={krishnaPencil}
                                 alt="Lord Krishna - Pencil Art"
                                 className="w-full h-auto max-w-sm md:max-w-md mx-auto relative z-10"
-                                style={{ transform: "translateZ(60px)" }}
-                                initial={{ scale: 0.9 }}
-                                whileInView={{ scale: 1 }}
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                whileInView={{ scale: 1, opacity: 1 }}
                                 viewport={{ once: true }}
                                 transition={{ duration: 0.8, delay: 0.4 }}
                             />
-                            {/* Subtle background-matched gradient fade around image */}
-                            <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-transparent to-[#0a0a0a] opacity-20 pointer-events-none" />
-                            <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a] via-transparent to-[#0a0a0a] opacity-15 pointer-events-none" />
                         </div>
 
                         {/* Circular scrolling text */}
