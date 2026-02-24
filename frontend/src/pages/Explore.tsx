@@ -20,7 +20,7 @@ const Explore = () => {
 
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="pb-20">
 
 
       {/* Hero Section - Full Width */}
