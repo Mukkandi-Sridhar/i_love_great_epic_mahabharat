@@ -71,11 +71,10 @@ const BackgroundMusic = () => {
             {isPlaying && (
                 <button
                     onClick={toggleMute}
-                    className="fixed bottom-24 md:bottom-4 right-4 z-[9999] p-3 rounded-full bg-black/40 backdrop-blur-md border border-[#FFD700]/20 text-[#FFD700] hover:bg-[#FFD700]/10 transition-all duration-300 group"
+                    className="fixed bottom-24 md:bottom-6 right-6 z-[9999] p-2.5 rounded-full bg-black/10 hover:bg-black/40 backdrop-blur-sm border border-white/5 text-white/30 hover:text-white transition-all duration-500 group"
                     title={isMuted ? "Unmute" : "Mute"}
                 >
-                    {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5 animate-pulse" />}
-                    <div className="absolute inset-0 rounded-full bg-[#FFD700]/5 group-hover:bg-[#FFD700]/10 animate-ping opacity-20" />
+                    {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </button>
             )}
         </>

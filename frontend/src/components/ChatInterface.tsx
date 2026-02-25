@@ -4,6 +4,7 @@ import { chatService, ChatMessage } from '@/services/chat';
 import { cn } from '@/lib/utils';
 import logo from '@/assets/logo.png';
 import { useFirebase } from '@/contexts/FirebaseContext';
+import { motion, AnimatePresence } from "framer-motion";
 
 // Add type definition for Web Speech API
 interface SpeechRecognition extends EventTarget {
@@ -39,7 +40,7 @@ export const ChatInterface = () => {
     const [messages, setMessages] = useState<ChatMessage[]>([
         {
             role: 'assistant',
-            content: `Namaste ${userName !== "Guest" ? userName.split(' ')[0] : ''}! I am your Dharma guide. How can I assist you today with the Mahabharata or our products?`,
+            content: `Namaste${userName !== "Guest" ? ' ' + userName.split(' ')[0] : ''}! How can I assist you today?`,
             timestamp: Date.now()
         }
     ]);
@@ -83,7 +84,7 @@ export const ChatInterface = () => {
             setMessages([
                 {
                     role: 'assistant',
-                    content: `Namaste ${userName.split(' ')[0]}! I am your Dharma guide. How can I assist you today with the Mahabharata or our products?`,
+                    content: `Namaste ${userName.split(' ')[0]}! How can I assist you today?`,
                     timestamp: Date.now()
                 }
             ]);
@@ -253,111 +254,124 @@ export const ChatInterface = () => {
     };
 
     return (
-        <div className="flex flex-col h-[600px] w-full max-w-2xl mx-auto bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
-            {/* Header */}
-            <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full overflow-hidden border border-primary/30">
-                        <img src={logo} alt="Dharma Assistant" className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                        <h3 className="font-serif font-bold text-white">Dharma Assistant</h3>
-                        <div className="flex items-center gap-2">
-                            <p className="text-xs text-gray-400">Powered by Divine Intelligence</p>
-                            {user && (
-                                <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full border border-primary/20">
-                                    {userName}
-                                </span>
-                            )}
+        <div className="flex flex-col h-[600px] md:h-[700px] w-full max-w-2xl mx-auto bg-black/60 backdrop-blur-2xl rounded-2xl border border-white/10 overflow-hidden shadow-2xl relative">
+            {/* Header - Premium Windowed Identity */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-white/5 bg-white/[0.02] backdrop-blur-md relative z-20">
+                <div className="flex items-center gap-4">
+                    <div className="relative">
+                        <div className="w-10 h-10 rounded-full overflow-hidden border border-primary/30 p-0.5 bg-black/40 shadow-[0_0_15px_rgba(255,215,0,0.1)]">
+                            <img src={logo} alt="IA" className="w-full h-full object-cover rounded-full" />
                         </div>
+                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-black rounded-full shadow-lg" />
+                    </div>
+                    <div className="flex flex-col leading-tight">
+                        <span className="text-[13px] text-white font-bold tracking-[0.1em] uppercase">Divine Assistant</span>
+                        <span className="text-[9px] text-primary/60 uppercase tracking-tighter font-bold">M.Sridhar Guide</span>
                     </div>
                 </div>
                 {user && (
-                    <button
-                        onClick={logout}
-                        className="text-gray-400 hover:text-white transition-colors"
-                        title="Logout"
-                    >
-                        <LogOut className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <div className="flex flex-col items-end leading-tight">
+                            <span className="text-[11px] text-white font-medium uppercase tracking-widest">{userName}</span>
+                            <span className="text-[8px] text-gray-500 uppercase tracking-tighter mt-0.5">Premium Account</span>
+                        </div>
+                        <button
+                            onClick={logout}
+                            className="p-2 rounded-xl text-gray-500 hover:text-white hover:bg-white/5 transition-all"
+                            title="Logout"
+                        >
+                            <LogOut className="w-4 h-4" />
+                        </button>
+                    </div>
                 )}
             </div>
 
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent">
-                {messages.map((msg, idx) => (
-                    <div
-                        key={idx}
-                        className={cn(
-                            "flex gap-3 max-w-[85%]",
-                            msg.role === 'user' ? "ml-auto flex-row-reverse" : ""
-                        )}
-                    >
-                        <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border overflow-hidden",
-                            msg.role === 'user'
-                                ? "bg-primary/20 border-primary/30"
-                                : "bg-white/10 border-white/20"
-                        )}>
-                            {msg.role === 'user' ? (
-                                <img
-                                    src={userPhoto}
-                                    alt={userName}
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                <img src={logo} alt="Bot" className="w-full h-full object-cover" />
-                            )}
-                        </div>
+            {/* Messages Area - Polished Flow */}
+            <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scrollbar-none relative z-10">
+                <AnimatePresence initial={false}>
+                    {messages.map((msg, idx) => {
+                        const isUser = msg.role === 'user';
+                        return (
+                            <motion.div
+                                key={idx}
+                                layout
+                                initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                className={cn(
+                                    "flex gap-4 max-w-[92%] group",
+                                    isUser ? "ml-auto flex-row-reverse" : "flex-row"
+                                )}
+                            >
+                                {/* Person Profile Avatars */}
+                                <div className={cn(
+                                    "w-10 h-10 rounded-full flex-shrink-0 mt-1 border border-white/10 p-0.5 bg-black/40 overflow-hidden",
+                                    isUser ? "hidden md:block shadow-lg" : "block shadow-[0_0_20px_rgba(0,0,0,0.3)]"
+                                )}>
+                                    <img
+                                        src={isUser ? userPhoto : logo}
+                                        alt=""
+                                        className="w-full h-full object-cover rounded-full grayscale group-hover:grayscale-0 transition-all duration-700"
+                                    />
+                                </div>
 
-                        <div className={cn(
-                            "p-3 rounded-2xl text-sm leading-relaxed",
-                            msg.role === 'user'
-                                ? "bg-primary/20 text-white rounded-tr-none border border-primary/20"
-                                : "bg-white/10 text-gray-200 rounded-tl-none border border-white/10"
-                        )}>
-                            {msg.content}
-                        </div>
-                    </div>
-                ))}
+                                <div className={cn(
+                                    "flex flex-col gap-1.5",
+                                    isUser ? "items-end text-right" : "items-start text-left"
+                                )}>
+                                    {/* Name label for 'person' feel */}
+                                    <span className="text-[10px] text-gray-500 font-bold tracking-[0.1em] uppercase px-1 opacity-70">
+                                        {isUser ? userName : "Assistant"}
+                                    </span>
+
+                                    <div className={cn(
+                                        "px-5 py-3.5 rounded-2xl text-[15px] leading-relaxed backdrop-blur-3xl border transition-all duration-500",
+                                        isUser
+                                            ? "bg-primary/20 text-white border-primary/20 rounded-tr-none shadow-xl shadow-primary/5"
+                                            : "bg-white/5 text-gray-300 border-white/10 rounded-tl-none hover:bg-white/10 shadow-xl shadow-black/20"
+                                    )}>
+                                        {msg.content}
+                                    </div>
+                                    <span className="text-[9px] text-gray-600 px-1 tracking-widest uppercase font-mono opacity-40">
+                                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                </div>
+                            </motion.div>
+                        );
+                    })}
+                </AnimatePresence>
+
                 {isLoading && (
-                    <div className="flex gap-3 max-w-[85%]">
-                        <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                            <img src={logo} alt="Bot" className="w-full h-full object-cover" />
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex gap-4 items-center px-2"
+                    >
+                        <div className="w-10 h-10 rounded-full border border-white/10 p-0.5 bg-black/40 shadow-lg animate-pulse">
+                            <img src={logo} alt="" className="w-full h-full object-cover rounded-full grayscale" />
                         </div>
-                        <div className="bg-white/5 p-3 rounded-2xl rounded-tl-none border border-white/5 flex items-center gap-2">
-                            <Loader2 className="w-4 h-4 text-primary animate-spin" />
-                            <span className="text-xs text-gray-400">Consulting the archives...</span>
+                        <div className="px-5 py-3 rounded-2xl bg-white/5 border border-white/10 flex gap-2 shadow-xl">
+                            <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                            <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                            <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce" />
                         </div>
-                    </div>
+                    </motion.div>
                 )}
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
-            <form onSubmit={handleSend} className="p-4 border-t border-white/10 bg-white/5">
-                <div className="flex gap-2 relative">
-                    {/* Premium Microphone Button */}
+            {/* Input Area - Window Integrated Bar */}
+            <form onSubmit={handleSend} className="px-5 py-6 border-t border-white/5 bg-black/20 relative z-20">
+                <div className="flex items-center gap-3 max-w-xl mx-auto bg-black/40 rounded-xl border border-white/5 p-1 px-3 focus-within:border-primary/30 transition-all shadow-inner">
                     <button
                         type="button"
                         onClick={startListening}
                         className={cn(
-                            "relative overflow-hidden p-3 rounded-xl transition-all duration-500 ease-out group",
-                            isListening
-                                ? "bg-primary text-black shadow-[0_0_20px_rgba(255,215,0,0.5)] scale-110" // Gold glow
-                                : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/5"
+                            "p-2 rounded-lg transition-all text-gray-500 hover:text-primary hover:bg-white/5",
+                            isListening && "text-primary bg-primary/10 shadow-[0_0_15px_rgba(255,215,0,0.2)]"
                         )}
-                        title={isListening ? "Listening..." : "Start voice input"}
+                        title="Voice Input"
                     >
-                        {/* Pulse Ring Animation */}
-                        {isListening && (
-                            <span className="absolute inset-0 rounded-xl border-2 border-primary/50 animate-ping opacity-75"></span>
-                        )}
-
-                        {/* Icon Transition */}
-                        <div className={cn("transition-transform duration-300", isListening ? "scale-110" : "scale-100")}>
-                            {isListening ? <Mic className="w-5 h-5 animate-pulse" /> : <Mic className="w-5 h-5" />}
-                        </div>
+                        <Mic className="w-5 h-5" />
                     </button>
 
                     <input
@@ -365,25 +379,15 @@ export const ChatInterface = () => {
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder={
-                            isListening
-                                ? "Listening to your voice..."
-                                : isProcessing
-                                    ? "Processing speech..."
-                                    : "Ask about Mahabharata or our products..."
-                        }
-                        className={cn(
-                            "flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all",
-                            isListening && "border-primary/50 ring-1 ring-primary/30 bg-primary/5 placeholder:text-primary/70"
-                        )}
+                        placeholder={isListening ? "Listening..." : "Message assistant..."}
+                        className="flex-1 bg-transparent py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none"
                         disabled={isLoading || isProcessing}
                     />
+
                     <button
                         type="submit"
                         disabled={isLoading || !input.trim()}
-                        className={cn(
-                            "bg-primary hover:bg-primary/90 text-black p-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95",
-                        )}
+                        className="p-2 rounded-lg transition-all text-gray-500 hover:text-white disabled:opacity-20 flex items-center justify-center hover:bg-white/5"
                     >
                         <Send className="w-5 h-5" />
                     </button>
