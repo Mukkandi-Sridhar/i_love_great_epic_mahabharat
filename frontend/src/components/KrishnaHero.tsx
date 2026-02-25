@@ -170,9 +170,8 @@ const KrishnaHero = () => {
                         key={i}
                         r="4"
                         fill="#FFD700"
-                        initial={{ offsetDistance: "0%", opacity: 0 }}
+                        initial={{ opacity: 0 }}
                         animate={{
-                            offsetDistance: "100%",
                             opacity: [0, 1, 1, 0]
                         }}
                         transition={{
@@ -182,7 +181,8 @@ const KrishnaHero = () => {
                             ease: "linear"
                         }}
                         style={{
-                            offsetPath: "path('M 0,200 Q 300,150 600,200 T 1200,200')"
+                            offsetPath: "path('M 0,200 Q 300,150 600,200 T 1200,200')",
+                            offsetDistance: i * 20 + "%" // Set static or use CSS variable for animation if needed
                         }}
                     />
                 ))}
