@@ -39,7 +39,7 @@ const Layout = ({ children }: LayoutProps) => {
       {showIntro && <IntroOverlay onFinish={handleIntroFinish} />}
       <Navbar />
       <main className={cn(
-        "flex-grow pb-20 md:pb-0",
+        "flex-grow flex flex-col pb-20 md:pb-0",
         !(pathname === '/' || pathname === '/explore') && "pt-14 md:pt-20"
       )}>
 
