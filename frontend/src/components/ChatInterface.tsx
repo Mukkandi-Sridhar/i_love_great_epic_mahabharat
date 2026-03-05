@@ -254,7 +254,7 @@ export const ChatInterface = () => {
     };
 
     return (
-        <div className="flex flex-col h-[600px] md:h-[700px] w-full max-w-2xl mx-auto bg-black/60 backdrop-blur-2xl rounded-2xl border border-white/10 overflow-hidden shadow-2xl relative">
+        <div className="flex flex-col w-full h-full md:max-h-[700px] max-w-3xl mx-auto bg-black/60 backdrop-blur-2xl md:rounded-2xl border-y md:border border-white/10 overflow-hidden shadow-2xl relative">
             {/* Header - Premium Windowed Identity */}
             <div className="px-6 py-4 flex items-center justify-between border-b border-white/5 bg-white/[0.02] backdrop-blur-md relative z-20">
                 <div className="flex items-center gap-4">
