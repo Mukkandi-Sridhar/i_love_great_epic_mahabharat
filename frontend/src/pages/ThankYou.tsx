@@ -2,11 +2,12 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { CheckCircle2, Hash, Mail, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 const ThankYou = () => {
   const navigate = useNavigate();
   const { user } = useFirebase();
+  const [countdown, setCountdown] = useState(6);
   const location = useLocation();
   const state = (location.state || {}) as {
     mode?: "prepaid" | "physical-paid";
@@ -15,12 +16,20 @@ const ThankYou = () => {
   };
 
   useEffect(() => {
-    if (user) {
-      const timer = setTimeout(() => {
-        navigate("/collection");
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          navigate("/collection");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, [user, navigate]);
 
   return (
@@ -74,6 +83,12 @@ const ThankYou = () => {
           <Button variant="outline" size="lg" className="w-full" onClick={() => navigate("/explore")}>
             Explore More
           </Button>
+
+          {user && countdown > 0 && (
+            <p className="text-xs text-muted-foreground mt-4">
+              Redirecting to your collection in {countdown}s...
+            </p>
+          )}
         </div>
       </div>
     </div>

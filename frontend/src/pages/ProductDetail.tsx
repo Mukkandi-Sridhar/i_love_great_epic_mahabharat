@@ -3,7 +3,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { Star, Shield, Download, Smartphone, Check, Share2, ShoppingBag, ArrowLeft, ExternalLink, Heart, Truck, ChevronDown, ChevronUp, MessageCircle, ThumbsUp, Verified, Package, Clock, Award, Headphones, Zap, BookOpen, Target, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { subscribeToOwnedProductIds } from "@/services/db";
+import { PurchaseAccess, subscribeToPurchaseAccess } from "@/services/db";
 import ThreeDBook from "@/components/ThreeDBook";
 import { allProducts } from "@/data/products";
 import RecentlyViewed from "@/components/RecentlyViewed";
@@ -129,6 +129,8 @@ const ProductDetail = () => {
   const { user } = useFirebase();
   const { toast } = useToast();
   const [isOwned, setIsOwned] = useState(false);
+  const [ownershipLoading, setOwnershipLoading] = useState(false);
+  const [purchaseAccess, setPurchaseAccess] = useState<PurchaseAccess | null>(null);
   const [showAllReviews, setShowAllReviews] = useState(false);
 
   // Use the imported allProducts directly. No useMemo needed for a static import array.
@@ -149,13 +151,26 @@ const ProductDetail = () => {
   useEffect(() => {
     if (!user || !id) {
       setIsOwned(false);
+      setOwnershipLoading(false);
+      setPurchaseAccess(null);
       return;
     }
 
-    // Subscribe to ownership changes in real-time
-    const unsubscribe = subscribeToOwnedProductIds(user.uid, (ownedIds) => {
-      setIsOwned(ownedIds.has(id));
-    });
+    setOwnershipLoading(true);
+    const unsubscribe = subscribeToPurchaseAccess(
+      user.uid,
+      id,
+      (purchase) => {
+        setPurchaseAccess(purchase);
+        setIsOwned(Boolean(purchase));
+        setOwnershipLoading(false);
+      },
+      () => {
+        setPurchaseAccess(null);
+        setIsOwned(false);
+        setOwnershipLoading(false);
+      }
+    );
 
     return () => unsubscribe();
   }, [user, id]);
@@ -365,6 +380,28 @@ const ProductDetail = () => {
             </>
           )}
         </div>
+
+        {/* Live Access Status */}
+        {user && (
+          <div className={`flex items-start gap-4 p-4 rounded-xl border ${isOwned
+            ? "bg-emerald-500/10 border-emerald-500/20"
+            : "bg-white/[0.02] border-white/10"
+            }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOwned ? "bg-emerald-500/15 text-emerald-400" : "bg-primary/10 text-primary"}`}>
+              {ownershipLoading ? <Clock className="w-5 h-5 animate-pulse" /> : isOwned ? <Check className="w-5 h-5" /> : <ShoppingBag className="w-5 h-5" />}
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-white">
+                {ownershipLoading ? "Checking your account access..." : isOwned ? "Purchased in your account" : "Not purchased yet"}
+              </p>
+              <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                {isOwned
+                  ? `Access is active${purchaseAccess?.orderId ? ` from order ${purchaseAccess.orderId}` : ""}. Support can see this purchase if you need help.`
+                  : "After checkout, access is saved to your account and support can help with this product."}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Highlights Grid */}
         <div>

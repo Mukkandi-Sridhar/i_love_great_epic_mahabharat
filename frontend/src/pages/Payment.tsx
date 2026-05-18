@@ -2,16 +2,12 @@ import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
-  ArrowRight,
   ShieldCheck,
-  Ticket,
   X,
   Lock,
-  Truck,
-  CheckCircle2,
-  FileText,
   BadgeCheck,
-  Zap
+  Zap,
+  CreditCard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +39,8 @@ const Payment = () => {
   const [altPhone, setAltPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingProduct, setLoadingProduct] = useState(true);
+  const [fakeGatewayOpen, setFakeGatewayOpen] = useState(false);
+  const [fakeGatewayProcessing, setFakeGatewayProcessing] = useState(false);
 
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number; type: string } | null>(null);
@@ -81,6 +79,7 @@ const Payment = () => {
 
   const type = searchParams.get("type");
   const isPhysical = product?.type === "sdcard" || product?.type === "pendrive" || type === "sdcard" || type === "pendrive";
+  const fakePaymentEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_FAKE_PAYMENT === "true";
 
   const missingFields = useMemo(() => {
     const missing: string[] = [];
@@ -124,22 +123,26 @@ const Payment = () => {
     }
   };
 
-  const handlePayment = async () => {
+  const validateCheckout = () => {
     if (!user) { navigate("/auth"); return; }
     if (!product) { navigate("/explore", { replace: true }); return; }
     if (!/^[6-9]\d{9}$/.test(phone)) {
       toast({ title: "Required", description: "Please enter a valid WhatsApp number.", variant: "destructive" });
-      return;
+      return false;
     }
     if (isPhysical && !/^\d{6}$/.test(pincode)) {
       toast({ title: "Required", description: "Please enter a valid 6-digit pincode.", variant: "destructive" });
-      return;
+      return false;
     }
     if (isPhysical && (!name || !address || !city || !pincode || !state)) {
       toast({ title: "Required", description: "Please complete the shipping address.", variant: "destructive" });
-      return;
+      return false;
     }
+    return true;
+  };
 
+  const submitCompletedOrder = async (payment?: { mode: string; ref: string; test: boolean }) => {
+    if (!user || !product) return;
     try {
       setLoading(true);
       const result = await completeOrder({
@@ -149,9 +152,16 @@ const Payment = () => {
         phone,
         productType: product.type,
         productId: id || "",
+        productTitle: product.title,
+        productLanguage: product.language,
+        productImage: product.image,
         basePrice: product.price,
         couponCode: appliedCoupon?.code,
         shipping: isPhysical ? { name, address, city, pincode, state, altPhone } : undefined,
+        downloadLink: product.driveLink,
+        paymentMode: payment?.mode,
+        paymentRef: payment?.ref,
+        testPayment: payment?.test,
       });
 
       if (!result.success) {
@@ -164,6 +174,43 @@ const Payment = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePayment = async () => {
+    if (!validateCheckout()) return;
+
+    if (fakePaymentEnabled) {
+      setFakeGatewayOpen(true);
+      return;
+    }
+
+    await submitCompletedOrder();
+  };
+
+  const simulateSandboxPayment = async (outcome: "success" | "failure") => {
+    if (!validateCheckout()) return;
+
+    setFakeGatewayProcessing(true);
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    if (outcome === "failure") {
+      setFakeGatewayProcessing(false);
+      toast({
+        title: "Sandbox payment failed",
+        description: "No order was created. Try the success path when you are ready.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const paymentRef = `sandbox_${Date.now()}`;
+    setFakeGatewayOpen(false);
+    setFakeGatewayProcessing(false);
+    await submitCompletedOrder({
+      mode: "sandbox_gateway",
+      ref: paymentRef,
+      test: true,
+    });
   };
 
   if (loadingProduct || (finalPrice === 0 && !appliedCoupon)) {
@@ -331,9 +378,15 @@ const Payment = () => {
               disabled={loading || isFormIncomplete}
               className="w-full h-16 rounded-[1.5rem] bg-primary text-black text-base font-black uppercase tracking-widest shadow-[0_15px_30px_-10px_rgba(212,175,55,0.4)] hover:scale-[1.01] active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? "Processing..." : "Pay & Start Journey"}
+              {loading ? "Processing..." : fakePaymentEnabled ? "Open Sandbox Gateway" : "Pay & Start Journey"}
             </Button>
           </div>
+
+          {fakePaymentEnabled && (
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[11px] text-amber-200">
+              Sandbox checkout is enabled for local testing. No real money will be charged.
+            </div>
+          )}
 
           <div className="flex justify-center gap-6 pt-4 grayscale opacity-30">
             <BadgeCheck className="w-5 h-5" />
@@ -344,6 +397,71 @@ const Payment = () => {
         </div>
 
       </div>
+
+      {fakeGatewayOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-5 backdrop-blur-md">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#080808] p-5 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary">
+                  <CreditCard className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-white">Sandbox Gateway</h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Testing only</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFakeGatewayOpen(false)}
+                disabled={fakeGatewayProcessing}
+                className="rounded-full p-2 text-gray-500 hover:bg-white/5 hover:text-white disabled:opacity-40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+              <div className="flex justify-between gap-4 text-xs">
+                <span className="text-gray-500">Product</span>
+                <span className="truncate text-right font-bold text-white">{product.title}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Amount</span>
+                <span className="font-black text-primary">Rs.{finalPrice}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Customer</span>
+                <span className="truncate text-right text-white">{email}</span>
+              </div>
+            </div>
+
+            <p className="my-5 text-xs leading-relaxed text-gray-400">
+              Choose success to create a paid test order and grant access. Choose failure to verify the failed-payment UI without creating an order.
+            </p>
+
+            <div className="space-y-3">
+              <Button
+                type="button"
+                onClick={() => simulateSandboxPayment("success")}
+                disabled={fakeGatewayProcessing}
+                className="h-12 w-full rounded-xl bg-primary text-black font-black uppercase tracking-widest hover:bg-primary/90"
+              >
+                {fakeGatewayProcessing ? "Processing..." : "Simulate Success"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => simulateSandboxPayment("failure")}
+                disabled={fakeGatewayProcessing}
+                className="h-12 w-full rounded-xl border-red-500/20 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+              >
+                Simulate Failure
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

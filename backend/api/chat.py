@@ -52,9 +52,6 @@ def _latest_message(body: ChatRequestBody) -> str:
 @limiter.limit("20/minute")
 async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> dict:
     """Run the Dharma agent and return a friendly response with a session id."""
-    if not body.uid:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
     message = _latest_message(body)
     session_id = body.session_id or str(uuid4())
     if not message:
@@ -109,9 +106,6 @@ def _sse_event(event: dict) -> str:
 @limiter.limit("20/minute")
 async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> StreamingResponse:
     """Stream agent status/tool events and the final Dharma response."""
-    if not body.uid:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
     message = _latest_message(body)
     session_id = body.session_id or str(uuid4())
 

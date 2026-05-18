@@ -224,7 +224,12 @@ async def _get_user_purchases(uid: str) -> dict:
                     "title": data.get("title", ""),
                     "type": data.get("type", ""),
                     "price": data.get("price", 0),
-                    "has_download_link": bool(data.get("driveLink") or data.get("downloadLink")),
+                    "language": data.get("language", ""),
+                    "order_id": data.get("orderId", ""),
+                    "status": data.get("status", data.get("accessStatus", "")),
+                    "has_download_link": bool(
+                        data.get("hasDownloadLink") or data.get("driveLink") or data.get("downloadLink")
+                    ),
                     "createdAt": _serialize_timestamp(data.get("createdAt")),
                 }
             )

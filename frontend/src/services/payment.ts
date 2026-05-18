@@ -7,9 +7,16 @@ export interface OrderOptions {
   phone: string;
   productType: string;
   productId: string;
+  productTitle?: string;
+  productLanguage?: string;
+  productImage?: string;
   basePrice: number;
   couponCode?: string;
   shipping?: Record<string, any>;
+  downloadLink?: string;
+  paymentMode?: string;
+  paymentRef?: string;
+  testPayment?: boolean;
 }
 
 export interface OrderResult {
@@ -34,9 +41,16 @@ export const completeOrder = async (options: OrderOptions): Promise<OrderResult>
         phone: options.phone,
         product_type: options.productType,
         product_id: options.productId,
+        product_title: options.productTitle || null,
+        product_language: options.productLanguage || null,
+        product_image: options.productImage || null,
         base_price: options.basePrice,
         coupon_code: options.couponCode || null,
         shipping: options.shipping || null,
+        download_link: options.downloadLink || null,
+        payment_mode: options.paymentMode || null,
+        payment_ref: options.paymentRef || null,
+        test_payment: options.testPayment || false,
       }),
     });
 

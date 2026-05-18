@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Book, User, MessageCircle } from "lucide-react";
+import { Book, User, MessageCircle, UserCircle } from "lucide-react";
 
 const BottomNav = () => {
   const location = useLocation();
@@ -8,6 +8,7 @@ const BottomNav = () => {
     { name: "Explore", path: "/explore", icon: Book },
     { name: "Collection", path: "/collection", icon: User },
     { name: "Support", path: "/support", icon: MessageCircle },
+    { name: "Profile", path: "/profile", icon: UserCircle },
   ];
 
   const isActive = (path: string) => {
@@ -16,7 +17,7 @@ const BottomNav = () => {
 
   return (
     <nav className="fixed bottom-6 left-4 right-4 z-50 animate-slide-up">
-      <div className="glass-dock rounded-2xl h-16 px-6 flex justify-between items-center max-w-sm mx-auto">
+      <div className="glass-dock rounded-2xl h-16 px-6 flex justify-between items-center max-w-md mx-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);

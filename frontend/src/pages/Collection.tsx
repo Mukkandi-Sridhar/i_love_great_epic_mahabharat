@@ -73,8 +73,20 @@ const Collection = () => {
       <header className="sticky top-0 z-40 bg-background border-b border-border">
         <div className="px-4 md:px-6 h-16 flex items-center justify-between max-w-7xl mx-auto">
           <h1 className="text-xl md:text-2xl font-serif font-bold text-foreground">My Collection</h1>
-          <div className="flex items-center gap-2 text-xs md:text-sm bg-foreground text-background px-3 md:px-4 py-1.5 md:py-2 rounded-full font-semibold">
-            {stats.total}
+          <div className="flex items-center gap-2">
+            <span className="text-xs bg-foreground text-background px-3 py-1.5 rounded-full font-semibold">
+              {stats.total} Total
+            </span>
+            {stats.ebooks > 0 && (
+              <span className="text-xs bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-full font-semibold">
+                {stats.ebooks} Ebooks
+              </span>
+            )}
+            {stats.pendrives > 0 && (
+              <span className="text-xs bg-white/5 text-gray-400 border border-white/10 px-3 py-1.5 rounded-full font-semibold">
+                {stats.pendrives} Pendrives
+              </span>
+            )}
           </div>
         </div>
       </header>

@@ -4,6 +4,22 @@ import { log } from "./logger";
 
 export type ProductType = "ebook" | "sdcard" | "pendrive";
 
+export interface PurchaseAccess {
+  id: string;
+  productId?: string;
+  product_id?: string;
+  type?: ProductType;
+  title?: string | null;
+  price?: number | null;
+  imageUrl?: string | null;
+  orderId?: string | null;
+  status?: string;
+  accessStatus?: string;
+  downloadLink?: string | null;
+  driveLink?: string | null;
+  createdAt?: any;
+}
+
 export interface OrderInput {
   userId: string;
   phone: string;
@@ -93,6 +109,29 @@ export const subscribeToOwnedProductIds = (userId: string, callback: (ids: Set<s
   }, (err) => {
     log.error("Error subscribing to owned products", err);
   });
+};
+
+/**
+ * Real-time listener for one product access document.
+ */
+export const subscribeToPurchaseAccess = (
+  userId: string,
+  productId: string,
+  callback: (purchase: PurchaseAccess | null) => void,
+  onError?: (err: unknown) => void
+) => {
+  log.info("subscribeToPurchaseAccess", { userId, productId });
+  const purchaseRef = doc(db, "users", userId, "purchases", productId);
+  return onSnapshot(
+    purchaseRef,
+    (snap) => {
+      callback(snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as PurchaseAccess) : null);
+    },
+    (err) => {
+      log.error("Error subscribing to purchase access", err);
+      onError?.(err);
+    }
+  );
 };
 
 export const fetchPurchases = async (userId: string) => {

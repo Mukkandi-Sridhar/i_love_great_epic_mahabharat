@@ -41,8 +41,8 @@ USER PROFILE:
 Name: {name}
 Email: {email}
 
-FIRST_MESSAGE:
-{str(first_message).lower()}
+CONVERSATION STATE:
+{"This is the user's first message - greet them warmly by first name." if first_message else "This is a continuing conversation - do not re-greet."}
 
 USER CONTEXT (loaded before conversation):
 {json.dumps(user_context, indent=2, ensure_ascii=False)}

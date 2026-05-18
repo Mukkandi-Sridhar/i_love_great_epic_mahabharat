@@ -6,8 +6,7 @@ import ProductCard from "@/components/ProductCard";
 
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { fetchOwnedProductIds } from "@/services/db";
-import { log } from "@/services/logger";
+import { subscribeToOwnedProductIds } from "@/services/db";
 import { ebooks, pendrives } from "@/data/products";
 import { SkeletonCard } from "@/components/SkeletonCard";
 
@@ -59,16 +58,13 @@ const AllProducts = () => {
   }, [filterPrice, filterRating, typeParam]);
 
   useEffect(() => {
-    const loadOwned = async () => {
-      if (!user) { setOwned(new Set()); return; }
-      try {
-        const ids = await fetchOwnedProductIds(user.uid || "");
-        setOwned(ids);
-      } catch (e) {
-        log.error("owned fetch failed", e);
-      }
-    };
-    loadOwned();
+    if (!user) {
+      setOwned(new Set());
+      return;
+    }
+
+    const unsubscribe = subscribeToOwnedProductIds(user.uid, setOwned);
+    return () => unsubscribe();
   }, [user]);
 
   const getTitle = () => {
@@ -217,7 +213,7 @@ const AllProducts = () => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
                 >
-                  <ProductCard {...product} tag={owned.has(product.id) ? "Owned" : product.tag} />
+                  <ProductCard {...product} isOwned={owned.has(product.id)} tag={product.tag} />
                 </motion.div>
               ))}
             </motion.div>

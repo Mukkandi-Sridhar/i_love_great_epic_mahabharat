@@ -44,12 +44,13 @@ export const ChatInterface = () => {
     const { user } = useFirebase();
     const userName = user?.displayName || user?.email?.split("@")[0] || "Guest";
     const userEmail = user?.email || "guest@example.com";
-    const userPhoto = user?.photoURL || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&h=100&fit=crop";
+    const userPhoto = user?.photoURL || null;
+    const userInitial = userName.charAt(0).toUpperCase();
 
     const [messages, setMessages] = useState<ChatMessage[]>([
         {
             role: "assistant",
-            content: `Namaste${userName !== "Guest" ? ` ${userName.split(" ")[0]}` : ""}! How can I assist you today?`,
+            content: user ? `Namaste ${userName.split(" ")[0]}! How can I assist you today?` : "Namaste! How can I help you today?",
             timestamp: Date.now(),
         },
     ]);
@@ -277,7 +278,7 @@ export const ChatInterface = () => {
                     </div>
                     <div>
                         <span className="text-sm text-white font-bold">Dharma Assistant</span>
-                        <p className="text-[10px] text-gray-500">Online · Here to help</p>
+                        <p className="text-[10px] text-gray-500">Online - Here to help</p>
                     </div>
                 </div>
                 {user && <span className="text-xs text-gray-400">{userName.split(" ")[0]}</span>}
@@ -301,11 +302,15 @@ export const ChatInterface = () => {
                                         isUser ? "hidden md:block shadow-lg" : "block shadow-[0_0_20px_rgba(0,0,0,0.3)]"
                                     )}
                                 >
-                                    <img
-                                        src={isUser ? userPhoto : logo}
-                                        alt=""
-                                        className="w-full h-full object-cover rounded-full grayscale group-hover:grayscale-0 transition-all duration-700"
-                                    />
+                                    {isUser && userPhoto ? (
+                                        <img src={userPhoto} alt="" className="w-full h-full object-cover rounded-full" />
+                                    ) : isUser ? (
+                                        <div className="w-full h-full rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
+                                            {userInitial}
+                                        </div>
+                                    ) : (
+                                        <img src={logo} alt="" className="w-full h-full object-cover rounded-full grayscale group-hover:grayscale-0 transition-all duration-700" />
+                                    )}
                                 </div>
 
                                 <div className={cn("flex flex-col gap-1.5", isUser ? "items-end text-right" : "items-start text-left")}>

@@ -110,7 +110,7 @@ const AppRoutes = () => (
           <Route path="/payment/:id" element={<Payment />} />
           <Route path="/thank-you" element={<ThankYou />} />
           <Route path="/collection" element={<RequireAuth><Collection /></RequireAuth>} />
-          <Route path="/support" element={<RequireAuth><Support /></RequireAuth>} />
+          <Route path="/support" element={<Support />} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="/profile/details" element={<RequireAuth><ProfileDetails /></RequireAuth>} />
 
