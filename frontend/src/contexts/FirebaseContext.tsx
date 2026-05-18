@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User, setPersistence, browserLocalPersistence, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, firebaseConfigured } from '@/lib/firebase';
 import { useToast } from "@/hooks/use-toast";
 import { doc, setDoc, serverTimestamp, getFirestore } from 'firebase/firestore';
 
@@ -56,6 +56,15 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const { toast } = useToast();
 
   const signInWithGoogle = async () => {
+    if (!firebaseConfigured) {
+      toast({
+        title: "Firebase is not configured",
+        description: "Add your Firebase Web App values to frontend/.env.local and restart the dev server.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -72,6 +81,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   };
 
   const logout = async () => {
+    if (!firebaseConfigured) return;
+
     try {
       await signOut(auth);
       toast({ title: "Signed out", description: "See you soon!" });
@@ -81,6 +92,12 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   };
 
   useEffect(() => {
+    if (!firebaseConfigured) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
     // Make login persistent across refresh and navigation
     setPersistence(auth, browserLocalPersistence).catch(() => { });
 

@@ -35,7 +35,7 @@ Firestore tickets / users / orders / purchases
 - Tool calling: the assistant calls `save_ticket` after collecting Instagram ID and issue details.
 - Guarded caching: stable FAQ-style responses can be cached, while identity, memory, support, payment, and order questions are excluded.
 - Observability surface: `/ai/status` reports model, knowledge base load state, retrieval mode, tools, and rate limit policy.
-- Frontend trace UI: the support chat shows model, retrieval count, tool availability, and cache freshness after AI responses.
+- Support chat streams friendly progress updates while checking orders, payments, policies, and product information.
 
 ## Tech Stack
 
@@ -72,6 +72,8 @@ OPENAI_MODEL=gpt-4o-mini
 FIREBASE_CREDENTIALS={...service account json...}
 ```
 
+Place `serviceAccountKey.json` in `backend/` for local Firebase Admin use. Never commit Firebase service account files or local `.env` files.
+
 ## Demo Script
 
 1. Open the storefront and point out the protected customer journeys: products, collection, profile, support, and admin.
@@ -83,8 +85,7 @@ FIREBASE_CREDENTIALS={...service account json...}
 
 ## Important Files
 
-- `frontend/src/components/AIEngineeringShowcase.tsx`: homepage AI engineering section.
-- `frontend/src/components/ChatInterface.tsx`: assistant UI with trace metadata.
+- `frontend/src/components/ChatInterface.tsx`: customer support assistant UI.
 - `frontend/src/services/chat.ts`: typed chat client.
 - `backend/main.py`: FastAPI assistant, retrieval, function calling, cache, health/status endpoints.
 - `backend/company_policies_rag.txt`: business knowledge base used for grounded answers.

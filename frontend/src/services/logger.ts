@@ -1,16 +1,22 @@
 export const log = {
   info: (msg: string, data?: any) => {
-    try { console.info(`[INFO] ${msg}`, data ?? ""); } catch {}
+    write("info", `[INFO] ${msg}`, data);
   },
   warn: (msg: string, data?: any) => {
-    try { console.warn(`[WARN] ${msg}`, data ?? ""); } catch {}
+    write("warn", `[WARN] ${msg}`, data);
   },
   error: (msg: string, err?: any) => {
-    try { console.error(`[ERROR] ${msg}`, err ?? ""); } catch {}
+    write("error", `[ERROR] ${msg}`, err);
   },
   debug: (msg: string, data?: any) => {
-    if (import.meta?.env?.MODE !== "production") {
-      try { console.debug(`[DEBUG] ${msg}`, data ?? ""); } catch {}
-    }
+    write("debug", `[DEBUG] ${msg}`, data);
   }
 };
+
+function write(level: "info" | "warn" | "error" | "debug", msg: string, data?: any) {
+  if (import.meta?.env?.MODE === "production") return;
+
+  try {
+    globalThis.console?.[level]?.(msg, data ?? "");
+  } catch {}
+}

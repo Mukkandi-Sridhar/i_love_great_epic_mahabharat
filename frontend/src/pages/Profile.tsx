@@ -43,7 +43,7 @@ const Profile = () => {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-lg font-serif font-bold">Settings</h1>
+          <h1 className="text-lg font-serif font-bold">My Account</h1>
         </div>
       </header>
 

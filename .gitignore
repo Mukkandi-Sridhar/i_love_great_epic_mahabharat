@@ -1,0 +1,16 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.env.local
+
+# Firebase service accounts must never be committed.
+serviceAccountKey.json
+*firebase-adminsdk*.json
+*service-account*.json
+
+# Local/personal notes
+frontend/*.txt
+
+# Generated local RAG storage
+storage/

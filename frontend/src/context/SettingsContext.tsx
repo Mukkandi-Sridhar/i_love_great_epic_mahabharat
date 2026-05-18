@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, firebaseConfigured } from "@/lib/firebase";
 
 interface AppSettings {
     bannerText: string;
@@ -22,6 +22,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!firebaseConfigured) {
+            setLoading(false);
+            return;
+        }
+
         // Real-time listener for app settings
         const unsub = onSnapshot(doc(db, "settings", "app"), (doc) => {
             if (doc.exists()) {

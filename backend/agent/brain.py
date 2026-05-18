@@ -13,6 +13,17 @@ from backend.mcp.server import list_tools, process_tool_call
 
 logger = logging.getLogger("ChatbotBackend.agent.brain")
 
+TOOL_MESSAGES = {
+    "get_order_status": "Fetching your order details...",
+    "get_user_purchases": "Checking your purchases...",
+    "verify_payment": "Verifying your payment...",
+    "create_refund_request": "Processing your refund request...",
+    "create_support_ticket": "Creating your support ticket...",
+    "check_coupon": "Validating your coupon...",
+    "search_policies": "Checking our policies...",
+    "search_products": "Searching our products...",
+}
+
 
 def _tool_schema() -> list[dict]:
     """Convert internal MCP tool specs to OpenAI tool format."""
@@ -77,11 +88,105 @@ async def run_agent(
     session_id: str,
     history: list[dict],
     user_context: dict,
-) -> str:
+) -> dict:
     """Run Dharma with conversation history, user context, and MCP tools."""
     if not settings.openai_api_key:
         logger.warning("OPENAI_API_KEY missing; agent cannot run.")
-        return "I'm having trouble right now. Please try again shortly."
+        return {
+            "response": "I'm having trouble right now. Please try again shortly.",
+            "tools_called": [],
+            "tool_count": 0,
+        }
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=30.0, max_retries=2)
+    tools_called: list[str] = []
+    first_message = not any(item.get("role") == "user" for item in history)
+    messages: list[dict] = [
+        {
+            "role": "system",
+            "content": _system_prompt(name=name, email=email, user_context=user_context, first_message=first_message),
+        }
+    ]
+
+    for item in history[-10:]:
+        role = item.get("role")
+        content = item.get("content")
+        if role in {"user", "assistant"} and content:
+            messages.append({"role": role, "content": content})
+
+    messages.append({"role": "user", "content": message})
+    tools = _tool_schema()
+
+    try:
+        for _ in range(settings.max_tool_rounds):
+            completion = await client.chat.completions.create(
+                model=settings.openai_chat_model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+            )
+            assistant_message = completion.choices[0].message
+            tool_calls = assistant_message.tool_calls or []
+
+            if not tool_calls:
+                return {
+                    "response": assistant_message.content or "I can help with that. Please share one more detail.",
+                    "tools_called": tools_called,
+                    "tool_count": len(tools_called),
+                }
+
+            messages.append(assistant_message.model_dump(exclude_none=True))
+            for tool_call in tool_calls:
+                tools_called.append(tool_call.function.name)
+                result = await process_tool_call(
+                    tool_call.function.name,
+                    tool_call.function.arguments,
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "content": result,
+                    }
+                )
+
+        return {
+            "response": "I checked what I could. Please share one more detail so I can help you better.",
+            "tools_called": tools_called,
+            "tool_count": len(tools_called),
+        }
+    except Exception as exc:
+        logger.warning("Agent failed gracefully for session %s: %s", session_id, exc)
+        return {
+            "response": "I'm having trouble right now. Please try again shortly.",
+            "tools_called": tools_called,
+            "tool_count": len(tools_called),
+        }
+
+
+async def run_agent_streaming(
+    message: str,
+    uid: str,
+    email: str,
+    name: str,
+    session_id: str,
+    history: list[dict],
+    user_context: dict,
+):
+    """Yield user-safe status events while Dharma runs tools and responds."""
+    tools_called: list[str] = []
+    yield {"type": "status", "message": "Thinking..."}
+
+    if not settings.openai_api_key:
+        logger.warning("OPENAI_API_KEY missing; streaming agent cannot run.")
+        yield {
+            "type": "done",
+            "response": "I'm having trouble right now. Please try again shortly.",
+            "tools_called": tools_called,
+            "tool_count": 0,
+        }
+        return
 
     client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=30.0, max_retries=2)
     first_message = not any(item.get("role") == "user" for item in history)
@@ -113,24 +218,50 @@ async def run_agent(
             tool_calls = assistant_message.tool_calls or []
 
             if not tool_calls:
-                return assistant_message.content or "I can help with that. Please share one more detail."
+                yield {"type": "generating", "message": "Generating response..."}
+                yield {
+                    "type": "done",
+                    "response": assistant_message.content or "I can help with that.",
+                    "tools_called": tools_called,
+                    "tool_count": len(tools_called),
+                }
+                return
 
             messages.append(assistant_message.model_dump(exclude_none=True))
             for tool_call in tool_calls:
-                result = await process_tool_call(
-                    tool_call.function.name,
-                    tool_call.function.arguments,
-                )
+                tool_name = tool_call.function.name
+                yield {
+                    "type": "tool_start",
+                    "tool": tool_name,
+                    "message": TOOL_MESSAGES.get(tool_name, f"Processing {tool_name}..."),
+                }
+                result = await process_tool_call(tool_name, tool_call.function.arguments)
+                tools_called.append(tool_name)
+                yield {"type": "tool_end", "tool": tool_name}
                 messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": tool_call.id,
-                        "name": tool_call.function.name,
+                        "name": tool_name,
                         "content": result,
                     }
                 )
 
-        return "I checked what I could. Please share one more detail so I can help you better."
+        yield {
+            "type": "done",
+            "response": "I checked what I could. Please share one more detail so I can help you better.",
+            "tools_called": tools_called,
+            "tool_count": len(tools_called),
+        }
     except Exception as exc:
-        logger.warning("Agent failed gracefully for session %s: %s", session_id, exc)
-        return "I'm having trouble right now. Please try again shortly."
+        logger.warning("Streaming agent failed gracefully for session %s: %s", session_id, exc)
+        yield {
+            "type": "error",
+            "message": "Sorry, I'm having trouble connecting. Please try again.",
+        }
+        yield {
+            "type": "done",
+            "response": "Sorry, I'm having trouble connecting. Please try again.",
+            "tools_called": tools_called,
+            "tool_count": len(tools_called),
+        }

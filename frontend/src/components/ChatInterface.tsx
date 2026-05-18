@@ -1,25 +1,22 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, LogOut, Mic, Database, Workflow, Cpu, ShieldCheck } from 'lucide-react';
-import { chatService, ChatMessage, ChatMetadata } from '@/services/chat';
-import { cn } from '@/lib/utils';
-import logo from '@/assets/logo.png';
-import { useFirebase } from '@/contexts/FirebaseContext';
+import { useState, useRef, useEffect } from "react";
+import { Send, Mic } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { chatService, ChatMessage } from "@/services/chat";
+import { cn } from "@/lib/utils";
+import logo from "@/assets/logo.png";
+import { useFirebase } from "@/contexts/FirebaseContext";
 
-// Add type definition for Web Speech API
 interface SpeechRecognition extends EventTarget {
     continuous: boolean;
     interimResults: boolean;
     lang: string;
     start: () => void;
     stop: () => void;
-    abort: () => void;
     onstart: (event: Event) => void;
     onend: (event: Event) => void;
     onerror: (event: any) => void;
     onresult: (event: any) => void;
-    onspeechend: (event: Event) => void; // Added for auto-stop
-    onsoundstart: (event: Event) => void; // Added for silence detection
+    onsoundstart: (event: Event) => void;
 }
 
 declare global {
@@ -29,159 +26,51 @@ declare global {
     }
 }
 
-export const ChatInterface = () => {
-    const { user, logout } = useFirebase();
+const toolDisplayName = (tool?: string) => {
+    const names: Record<string, string> = {
+        get_order_status: "Checking Orders",
+        get_user_purchases: "Loading Purchases",
+        verify_payment: "Verifying Payment",
+        create_refund_request: "Refund Request",
+        create_support_ticket: "Creating Ticket",
+        check_coupon: "Validating Coupon",
+        search_policies: "Reading Policies",
+        search_products: "Finding Products",
+    };
+    return names[tool || ""] || "Working";
+};
 
-    // Derived user details with fallbacks
-    const userName = user?.displayName || user?.email?.split('@')[0] || "Guest";
+export const ChatInterface = () => {
+    const { user } = useFirebase();
+    const userName = user?.displayName || user?.email?.split("@")[0] || "Guest";
     const userEmail = user?.email || "guest@example.com";
     const userPhoto = user?.photoURL || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&h=100&fit=crop";
 
     const [messages, setMessages] = useState<ChatMessage[]>([
         {
-            role: 'assistant',
-            content: `Namaste${userName !== "Guest" ? ' ' + userName.split(' ')[0] : ''}! How can I assist you today?`,
-            timestamp: Date.now()
-        }
+            role: "assistant",
+            content: `Namaste${userName !== "Guest" ? ` ${userName.split(" ")[0]}` : ""}! How can I assist you today?`,
+            timestamp: Date.now(),
+        },
     ]);
-    const [input, setInput] = useState('');
+    const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [lastTrace, setLastTrace] = useState<ChatMetadata | null>(null);
     const [sessionId, setSessionId] = useState(() =>
         window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     const [showQuickQuestions, setShowQuickQuestions] = useState(true);
-
-    // Voice State
+    const [agentStatus, setAgentStatus] = useState<string | null>(null);
+    const [activeTools, setActiveTools] = useState<string[]>([]);
     const [isListening, setIsListening] = useState(false);
-    const [isProcessing, setIsProcessing] = useState(false); // New state for "Thinking/Processing"
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
     const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const inputRef = useRef<HTMLInputElement>(null); // For auto-focus
+    const inputRef = useRef<HTMLInputElement>(null);
+    const greetingSet = useRef(false);
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    // Cleanup speech recognition on unmount
-    useEffect(() => {
-        return () => {
-            stopListening();
-        };
-    }, []);
-
-
-    // Update greeting when user logs in
-    useEffect(() => {
-        if (user && messages.length === 1 && messages[0].role === 'assistant') {
-            setMessages([
-                {
-                    role: 'assistant',
-                    content: `Namaste ${userName.split(' ')[0]}! How can I assist you today?`,
-                    timestamp: Date.now()
-                }
-            ]);
-        }
-    }, [user, userName]);
-
-    // --- Premium Speech-to-Text Logic ---
-
-    const resetSilenceTimer = () => {
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-
-        // Auto-stop after 5 seconds of silence (increased for better UX)
-        silenceTimerRef.current = setTimeout(() => {
-            stopListening();
-        }, 5000);
-    };
-
-    const startListening = () => {
-        if (isListening || isProcessing) {
-            stopListening();
-            return;
-        }
-
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-        if (!SpeechRecognition) {
-            alert("Your browser does not support voice input. Please use Chrome or Edge.");
-            return;
-        }
-
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true; // Changed to true for longer sentences
-        recognition.interimResults = true; // Show text as you speak
-        recognition.lang = 'en-IN'; // Optimized for Indian accent
-
-        recognition.onstart = () => {
-            setIsListening(true);
-            setIsProcessing(false);
-            resetSilenceTimer();
-        };
-
-        recognition.onsoundstart = () => {
-            resetSilenceTimer(); // Reset timer when sound is detected
-        };
-
-        recognition.onspeechend = () => {
-            // In continuous mode, this might not trigger until fully stopped.
-            // We rely on silence timer for auto-stop.
-        };
-
-        recognition.onend = () => {
-            setIsListening(false);
-            setIsProcessing(false);
-            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        };
-
-        recognition.onerror = (event: any) => {
-            setIsListening(false);
-            setIsProcessing(false);
-        };
-
-        recognition.onresult = (event: any) => {
-            resetSilenceTimer(); // Reset timer on every result (interim or final)
-
-            let interimTranscript = '';
-            let finalTranscript = '';
-
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript;
-                } else {
-                    interimTranscript += event.results[i][0].transcript;
-                }
-            }
-
-            if (finalTranscript || interimTranscript) {
-                setInput(prev => {
-                    // This is a bit tricky with continuous and interim.
-                    // For now, let's just append final results to keep it simple and reliable.
-                    if (finalTranscript) {
-                        const cleanFinal = finalTranscript.trim();
-                        if (!cleanFinal) return prev;
-
-                        const updated = prev
-                            ? prev.trim() + ' ' + cleanFinal
-                            : cleanFinal.charAt(0).toUpperCase() + cleanFinal.slice(1);
-                        return updated;
-                    }
-                    return prev;
-                });
-
-                // Focus input after speech
-                setTimeout(() => inputRef.current?.focus(), 100);
-            }
-        };
-
-        recognitionRef.current = recognition;
-        recognition.start();
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
     const stopListening = () => {
@@ -190,59 +79,182 @@ export const ChatInterface = () => {
             recognitionRef.current.stop();
         }
         setIsListening(false);
-        setIsProcessing(false);
     };
-    // ---------------------------
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages, agentStatus, activeTools]);
+
+    useEffect(() => {
+        return () => stopListening();
+    }, []);
+
+    useEffect(() => {
+        if (!greetingSet.current && user && messages.length === 1 && messages[0].role === "assistant") {
+            setMessages([
+                {
+                    role: "assistant",
+                    content: `Namaste ${userName.split(" ")[0]}! How can I assist you today?`,
+                    timestamp: Date.now(),
+                },
+            ]);
+            greetingSet.current = true;
+        }
+    }, [user]);
+
+    const resetSilenceTimer = () => {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+            stopListening();
+        }, 5000);
+    };
+
+    const startListening = () => {
+        if (isListening) {
+            stopListening();
+            return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return;
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-IN";
+
+        recognition.onstart = () => {
+            setIsListening(true);
+            resetSilenceTimer();
+        };
+
+        recognition.onsoundstart = resetSilenceTimer;
+
+        recognition.onend = () => {
+            setIsListening(false);
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        };
+
+        recognition.onerror = () => {
+            setIsListening(false);
+        };
+
+        recognition.onresult = (event: any) => {
+            resetSilenceTimer();
+            let finalTranscript = "";
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                }
+            }
+
+            if (finalTranscript) {
+                setInput((prev) => {
+                    const cleanFinal = finalTranscript.trim();
+                    if (!cleanFinal) return prev;
+                    return prev ? `${prev.trim()} ${cleanFinal}` : cleanFinal.charAt(0).toUpperCase() + cleanFinal.slice(1);
+                });
+                setTimeout(() => inputRef.current?.focus(), 100);
+            }
+        };
+
+        recognitionRef.current = recognition;
+        recognition.start();
+    };
 
     const sendMessage = async (content: string) => {
         const trimmed = content.trim();
         if (!trimmed || isLoading) return;
 
-        // Stop listening if sending
         stopListening();
         setShowQuickQuestions(false);
+        setAgentStatus("Thinking...");
+        setActiveTools([]);
 
         const userMessage: ChatMessage = {
-            role: 'user',
+            role: "user",
             content: trimmed,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         };
 
-        const newMessages = [...messages, userMessage];
-        setMessages(newMessages);
-        setInput('');
+        setMessages((prev) => [...prev, userMessage]);
+        setInput("");
         setIsLoading(true);
 
+        let handledError = false;
+
         try {
-            const chatResponse = await chatService.sendMessage({
-                message: userMessage.content,
-                email: userEmail,
-                name: userName,
-                uid: user?.uid || "",
-                session_id: sessionId,
-            });
-            if (chatResponse.session_id && chatResponse.session_id !== sessionId) {
-                setSessionId(chatResponse.session_id);
-            }
-            setLastTrace(chatResponse.metadata ?? null);
-
-            const botMessage: ChatMessage = {
-                role: 'assistant',
-                content: chatResponse.response,
-                timestamp: Date.now()
-            };
-
-            setMessages(prev => [...prev, botMessage]);
-        } catch (error) {
-            setLastTrace(null);
-            const errorMessage: ChatMessage = {
-                role: 'assistant',
-                content: "Sorry, I'm having trouble connecting. Please try again.",
-                timestamp: Date.now()
-            };
-            setMessages(prev => [...prev, errorMessage]);
+            await chatService.sendMessageStreaming(
+                {
+                    message: userMessage.content,
+                    email: userEmail,
+                    name: userName,
+                    uid: user?.uid || "",
+                    session_id: sessionId,
+                },
+                (event) => {
+                    switch (event.type) {
+                        case "status":
+                            setAgentStatus(event.message || null);
+                            break;
+                        case "tool_start":
+                            setAgentStatus(event.message || null);
+                            if (event.tool) {
+                                setActiveTools((prev) => (prev.includes(event.tool!) ? prev : [...prev, event.tool!]));
+                            }
+                            break;
+                        case "tool_end":
+                            setActiveTools((prev) => prev.filter((tool) => tool !== event.tool));
+                            break;
+                        case "generating":
+                            setAgentStatus("Generating response...");
+                            setActiveTools([]);
+                            break;
+                        case "done":
+                            if (event.session_id && event.session_id !== sessionId) {
+                                setSessionId(event.session_id);
+                            }
+                            if (!handledError) {
+                                setMessages((prev) => [
+                                    ...prev,
+                                    {
+                                        role: "assistant",
+                                        content: event.response || "I can help with that.",
+                                        timestamp: Date.now(),
+                                    },
+                                ]);
+                            }
+                            setAgentStatus(null);
+                            setActiveTools([]);
+                            break;
+                        case "error":
+                            handledError = true;
+                            setMessages((prev) => [
+                                ...prev,
+                                {
+                                    role: "assistant",
+                                    content: "Sorry, I'm having trouble connecting. Please try again.",
+                                    timestamp: Date.now(),
+                                },
+                            ]);
+                            break;
+                    }
+                }
+            );
+        } catch {
+            setMessages((prev) => [
+                ...prev,
+                {
+                    role: "assistant",
+                    content: "Sorry, I'm having trouble connecting. Please try again.",
+                    timestamp: Date.now(),
+                },
+            ]);
         } finally {
             setIsLoading(false);
+            setAgentStatus(null);
+            setActiveTools([]);
         }
     };
 
@@ -253,95 +265,42 @@ export const ChatInterface = () => {
 
     const quickQuestions = ["Where is my order?", "Product info", "Refund policy"];
 
-    const traceItems = [
-        {
-            icon: Database,
-            label: "RAG",
-            value: lastTrace ? `${lastTrace.retrievedKnowledge ?? 0} sources` : "ready",
-        },
-        {
-            icon: Workflow,
-            label: "Tools",
-            value: lastTrace?.toolCalled || `${lastTrace?.toolsAvailable ?? 1} live`,
-        },
-        {
-            icon: Cpu,
-            label: "Model",
-            value: lastTrace?.model || "gpt-4o-mini",
-        },
-        {
-            icon: ShieldCheck,
-            label: "Cache",
-            value: lastTrace?.cached ? "hit" : "fresh",
-        },
-    ];
-
     return (
         <div className="flex flex-col w-full h-full md:max-h-[700px] max-w-3xl mx-auto bg-black/60 backdrop-blur-2xl md:rounded-2xl border-y md:border border-white/10 overflow-hidden shadow-2xl relative">
-            {/* Header - Premium Windowed Identity */}
-            <div className="px-6 py-4 flex items-center justify-between border-b border-white/5 bg-white/[0.02] backdrop-blur-md relative z-20">
-                <div className="flex items-center gap-4">
+            <div className="px-5 py-3 flex items-center justify-between border-b border-white/5 bg-white/[0.02] relative z-20">
+                <div className="flex items-center gap-3">
                     <div className="relative">
-                        <div className="w-10 h-10 rounded-full overflow-hidden border border-primary/30 p-0.5 bg-black/40 shadow-[0_0_15px_rgba(255,215,0,0.1)]">
-                            <img src={logo} alt="IA" className="w-full h-full object-cover rounded-full" />
+                        <div className="w-9 h-9 rounded-full overflow-hidden border border-primary/30 bg-black/40">
+                            <img src={logo} alt="Dharma" className="w-full h-full object-cover rounded-full" />
                         </div>
-                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-black rounded-full shadow-lg" />
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-black rounded-full" />
                     </div>
-                    <div className="flex flex-col leading-tight">
-                        <span className="text-[13px] text-white font-bold tracking-[0.1em] uppercase">Divine Assistant</span>
-                        <span className="text-[9px] text-primary/60 uppercase tracking-tighter font-bold">M.Sridhar Guide</span>
+                    <div>
+                        <span className="text-sm text-white font-bold">Dharma Assistant</span>
+                        <p className="text-[10px] text-gray-500">Online · Here to help</p>
                     </div>
                 </div>
-                {user && (
-                    <div className="flex items-center gap-4">
-                        <div className="flex flex-col items-end leading-tight">
-                            <span className="text-[11px] text-white font-medium uppercase tracking-widest">{userName}</span>
-                            <span className="text-[8px] text-gray-500 uppercase tracking-tighter mt-0.5">Premium Account</span>
-                        </div>
-                        <button
-                            onClick={logout}
-                            className="p-2 rounded-xl text-gray-500 hover:text-white hover:bg-white/5 transition-all"
-                            title="Logout"
-                        >
-                            <LogOut className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
+                {user && <span className="text-xs text-gray-400">{userName.split(" ")[0]}</span>}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-4 py-3 border-b border-white/5 bg-black/25">
-                {traceItems.map(({ icon: Icon, label, value }) => (
-                    <div key={label} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 min-w-0">
-                        <Icon className="w-3.5 h-3.5 text-primary shrink-0" />
-                        <div className="min-w-0 leading-tight">
-                            <div className="text-[9px] uppercase tracking-widest text-gray-500">{label}</div>
-                            <div className="text-[11px] text-white truncate">{value}</div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Messages Area - Polished Flow */}
             <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scrollbar-none relative z-10">
                 <AnimatePresence initial={false}>
                     {messages.map((msg, idx) => {
-                        const isUser = msg.role === 'user';
+                        const isUser = msg.role === "user";
                         return (
                             <motion.div
                                 key={idx}
                                 layout
                                 initial={{ opacity: 0, scale: 0.98, y: 10 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                                className={cn(
-                                    "flex gap-4 max-w-[92%] group",
-                                    isUser ? "ml-auto flex-row-reverse" : "flex-row"
-                                )}
+                                className={cn("flex gap-4 max-w-[92%] group", isUser ? "ml-auto flex-row-reverse" : "flex-row")}
                             >
-                                {/* Person Profile Avatars */}
-                                <div className={cn(
-                                    "w-10 h-10 rounded-full flex-shrink-0 mt-1 border border-white/10 p-0.5 bg-black/40 overflow-hidden",
-                                    isUser ? "hidden md:block shadow-lg" : "block shadow-[0_0_20px_rgba(0,0,0,0.3)]"
-                                )}>
+                                <div
+                                    className={cn(
+                                        "w-10 h-10 rounded-full flex-shrink-0 mt-1 border border-white/10 p-0.5 bg-black/40 overflow-hidden",
+                                        isUser ? "hidden md:block shadow-lg" : "block shadow-[0_0_20px_rgba(0,0,0,0.3)]"
+                                    )}
+                                >
                                     <img
                                         src={isUser ? userPhoto : logo}
                                         alt=""
@@ -349,25 +308,23 @@ export const ChatInterface = () => {
                                     />
                                 </div>
 
-                                <div className={cn(
-                                    "flex flex-col gap-1.5",
-                                    isUser ? "items-end text-right" : "items-start text-left"
-                                )}>
-                                    {/* Name label for 'person' feel */}
+                                <div className={cn("flex flex-col gap-1.5", isUser ? "items-end text-right" : "items-start text-left")}>
                                     <span className="text-[10px] text-gray-500 font-bold tracking-[0.1em] uppercase px-1 opacity-70">
                                         {isUser ? userName : "Assistant"}
                                     </span>
 
-                                    <div className={cn(
-                                        "px-5 py-3.5 rounded-2xl text-[15px] leading-relaxed backdrop-blur-3xl border transition-all duration-500",
-                                        isUser
-                                            ? "bg-primary/20 text-white border-primary/20 rounded-tr-none shadow-xl shadow-primary/5"
-                                            : "bg-white/5 text-gray-300 border-white/10 rounded-tl-none hover:bg-white/10 shadow-xl shadow-black/20"
-                                    )}>
+                                    <div
+                                        className={cn(
+                                            "px-5 py-3.5 rounded-2xl text-[15px] leading-relaxed backdrop-blur-3xl border transition-all duration-500",
+                                            isUser
+                                                ? "bg-primary/20 text-white border-primary/20 rounded-tr-none shadow-xl shadow-primary/5"
+                                                : "bg-white/5 text-gray-300 border-white/10 rounded-tl-none hover:bg-white/10 shadow-xl shadow-black/20"
+                                        )}
+                                    >
                                         {msg.content}
                                     </div>
                                     <span className="text-[9px] text-gray-600 px-1 tracking-widest uppercase font-mono opacity-40">
-                                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                     </span>
                                 </div>
                             </motion.div>
@@ -376,11 +333,7 @@ export const ChatInterface = () => {
                 </AnimatePresence>
 
                 {showQuickQuestions && messages.length === 1 && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="ml-14 flex flex-wrap gap-2"
-                    >
+                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="ml-14 flex flex-wrap gap-2">
                         {quickQuestions.map((question) => (
                             <button
                                 key={question}
@@ -396,25 +349,41 @@ export const ChatInterface = () => {
                 )}
 
                 {isLoading && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="flex gap-4 items-center px-2"
-                    >
-                        <div className="w-10 h-10 rounded-full border border-white/10 p-0.5 bg-black/40 shadow-lg animate-pulse">
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 items-start px-2">
+                        <div className="w-8 h-8 rounded-full border border-white/10 bg-black/40 overflow-hidden">
                             <img src={logo} alt="" className="w-full h-full object-cover rounded-full grayscale" />
                         </div>
-                        <div className="px-5 py-3 rounded-2xl bg-white/5 border border-white/10 flex gap-2 shadow-xl">
-                            <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                            <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                            <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce" />
+                        <div className="flex flex-col gap-2">
+                            {agentStatus && (
+                                <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-gray-400 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                                    {agentStatus}
+                                </div>
+                            )}
+                            {activeTools.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {activeTools.map((tool) => (
+                                        <span
+                                            key={tool}
+                                            className="px-2 py-1 rounded-full border border-primary/20 bg-primary/10 text-[10px] text-primary font-bold uppercase tracking-wider flex items-center gap-1"
+                                        >
+                                            <span className="w-1 h-1 bg-primary rounded-full animate-pulse" />
+                                            {toolDisplayName(tool)}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="px-4 py-3 rounded-2xl bg-white/5 border border-white/10 flex gap-1.5">
+                                <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce" />
+                            </div>
                         </div>
                     </motion.div>
                 )}
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area - Window Integrated Bar */}
             <form onSubmit={handleSend} className="px-5 py-6 border-t border-white/5 bg-black/20 relative z-20">
                 <div className="flex items-center gap-3 max-w-xl mx-auto bg-black/40 rounded-xl border border-white/5 p-1 px-3 focus-within:border-primary/30 transition-all shadow-inner">
                     <button
@@ -436,7 +405,7 @@ export const ChatInterface = () => {
                         onChange={(e) => setInput(e.target.value)}
                         placeholder={isListening ? "Listening..." : "Message assistant..."}
                         className="flex-1 bg-transparent py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none"
-                        disabled={isLoading || isProcessing}
+                        disabled={isLoading}
                     />
 
                     <button

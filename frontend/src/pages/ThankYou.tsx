@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Hash, Mail, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import { useEffect } from "react";
@@ -9,14 +9,12 @@ const ThankYou = () => {
   const { user } = useFirebase();
   const location = useLocation();
   const state = (location.state || {}) as {
-    mode?: "prepaid" | "cod";
+    mode?: "prepaid" | "physical-paid";
     orderId?: string;
-    transactionId?: string;
     phone?: string;
   };
 
   useEffect(() => {
-    // If user is already logged in, redirect to collection after 2 seconds
     if (user) {
       const timer = setTimeout(() => {
         navigate("/collection");
@@ -24,82 +22,56 @@ const ThankYou = () => {
       return () => clearTimeout(timer);
     }
   }, [user, navigate]);
-  
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="text-center max-w-md animate-fade-in">
-        {/* Success Icon */}
         <div className="flex justify-center mb-6">
           <div className="relative">
             <CheckCircle2 className="w-24 h-24 text-primary animate-scale-in" />
             <div className="absolute inset-0 bg-primary rounded-full blur-xl opacity-30 animate-pulse" />
           </div>
         </div>
-        
-        {/* Message */}
-        <h1 className="text-3xl font-serif font-bold mb-3">
-          Thank You!
-        </h1>
-        
-        <p className="text-muted-foreground mb-2">
-          Your purchase was successful
-        </p>
 
-        {/* Test Mode Details (Fake PhonePe) */}
-        <div className="bg-card border border-dashed border-primary/40 rounded-xl p-4 mb-6 text-left shadow-elegant">
-          <p className="text-xs font-semibold text-primary mb-1 uppercase tracking-wide">
-            Test Mode – Fake Payment (For verification only)
-          </p>
+        <h1 className="text-3xl font-serif font-bold mb-3">Thank You!</h1>
+
+        <p className="text-muted-foreground mb-2">Your purchase was successful</p>
+
+        <div className="bg-card border border-primary/20 rounded-xl p-4 mb-6 text-left shadow-elegant space-y-3">
           {state.orderId && (
-            <p className="text-sm text-muted-foreground">
-              <span className="font-semibold">Order ID:</span> {state.orderId}
-            </p>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Hash className="w-4 h-4 text-primary" />
+              <span>
+                <span className="font-semibold text-foreground">Order ID:</span> {state.orderId}
+              </span>
+            </div>
           )}
-          {state.transactionId && (
-            <p className="text-sm text-muted-foreground">
-              <span className="font-semibold">Transaction ID:</span> {state.transactionId}
-            </p>
-          )}
-          {state.phone && (
-            <p className="text-sm text-muted-foreground">
-              <span className="font-semibold">Phone:</span> {state.phone}
-            </p>
-          )}
-          {!state.orderId && !state.transactionId && !state.phone && (
-            <p className="text-xs text-muted-foreground mt-1">
-              No test details available for this session.
-            </p>
+          <div className="flex items-start gap-3 text-sm text-muted-foreground">
+            <Mail className="w-4 h-4 text-primary mt-0.5" />
+            <p>You will receive a confirmation on WhatsApp/Email.</p>
+          </div>
+          {state.mode === "physical-paid" ? (
+            <div className="flex items-start gap-3 text-sm text-muted-foreground">
+              <Package className="w-4 h-4 text-primary mt-0.5" />
+              <p>We will ship within 24-48 hours.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Check your email for download link.</p>
           )}
         </div>
-        
-        {/* Action Buttons */}
+
         <div className="space-y-3">
           {user ? (
-            <Button 
-              variant="gradient" 
-              size="lg" 
-              className="w-full"
-              onClick={() => navigate("/collection")}
-            >
+            <Button variant="gradient" size="lg" className="w-full" onClick={() => navigate("/collection")}>
               View Your Collection
             </Button>
           ) : (
-            <Button 
-              variant="gradient" 
-              size="lg" 
-              className="w-full"
-              onClick={() => navigate("/auth")}
-            >
+            <Button variant="gradient" size="lg" className="w-full" onClick={() => navigate("/auth")}>
               Login to Check Collection
             </Button>
           )}
-          
-          <Button 
-            variant="outline" 
-            size="lg" 
-            className="w-full"
-            onClick={() => navigate("/explore")}
-          >
+
+          <Button variant="outline" size="lg" className="w-full" onClick={() => navigate("/explore")}>
             Explore More
           </Button>
         </div>

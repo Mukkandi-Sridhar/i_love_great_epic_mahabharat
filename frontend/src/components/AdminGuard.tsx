@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, firebaseConfigured } from "@/lib/firebase";
 
 const AdminGuard = ({ children }: { children: ReactNode }) => {
     const { user, loading } = useFirebase();
@@ -11,6 +11,7 @@ const AdminGuard = ({ children }: { children: ReactNode }) => {
 
     useEffect(() => {
         if (loading) return;
+        if (!firebaseConfigured) { navigate("/auth"); return; }
         if (!user) { navigate("/auth"); return; }
 
         getDoc(doc(db, "users", user.uid)).then((snap) => {

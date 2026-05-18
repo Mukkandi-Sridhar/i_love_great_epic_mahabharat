@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { fetchPurchases, subscribeToPurchases } from "@/services/db";
+import { subscribeToPurchases } from "@/services/db";
 import { allProducts } from "@/data/products";
 import { SkeletonCard } from "@/components/SkeletonCard";
 
@@ -164,8 +164,8 @@ const Collection = () => {
             <div className="w-32 h-32 md:w-40 md:h-40 bg-muted rounded-full flex items-center justify-center mb-6 md:mb-8">
               <Book className="w-16 h-16 md:w-20 md:h-20 text-muted-foreground" />
             </div>
-            <h3 className="text-2xl md:3xl font-serif font-bold mb-3 md:mb-4 text-foreground text-center">
-              No purchases yet. Explore our collection →
+            <h3 className="text-2xl md:text-3xl font-serif font-bold mb-3 md:mb-4 text-foreground text-center">
+              No purchases yet. Explore our collection &rarr;
             </h3>
             <p className="text-sm md:text-base text-muted-foreground text-center max-w-md mb-8 md:mb-10 leading-relaxed">
               Start your spiritual journey by exploring our authentic Mahabharat collection

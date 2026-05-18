@@ -1,20 +1,35 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useCallback, useEffect, useRef } from "react";
 import HeroCarousel from "@/components/HeroCarousel";
 import ProductCard from "@/components/ProductCard";
-
 import TestimonialMarquee from "@/components/TestimonialMarquee";
 import DivineJourney from "@/components/DivineJourney";
 import { ebooks, pendrives } from "@/data/products";
 import KrishnaHero from "@/components/KrishnaHero";
 import DivineSeparator from "@/components/DivineSeparator";
 import brandLogo from "@/assets/logo.png";
-import RecentlyViewed from "@/components/RecentlyViewed";
-import AIEngineeringShowcase from "@/components/AIEngineeringShowcase";
-import { BookOpen, Target, ArrowRight } from "lucide-react";
-import { useFirebase } from "@/contexts/FirebaseContext";
+import { BookOpen, Target, ArrowRight, Users, Zap, Shield } from "lucide-react";
 
+const trustBadges = [
+  { icon: Users, title: "1,200+ Happy Devotees", subtitle: "Across India" },
+  { icon: Zap, title: "Instant Delivery", subtitle: "Digital access in seconds" },
+  { icon: Shield, title: "Authentic Content", subtitle: "Verified sacred texts" },
+];
 
+const TrustBadges = () => (
+  <section className="w-full max-w-[1400px] mx-auto px-4 md:px-8 py-8 md:py-12">
+    <div className="grid gap-4 md:grid-cols-3">
+      {trustBadges.map(({ icon: Icon, title, subtitle }) => (
+        <div key={title} className="border border-white/10 rounded-xl p-5 bg-white/[0.02]">
+          <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+            <Icon className="w-5 h-5 text-primary" />
+          </div>
+          <h3 className="text-white font-bold">{title}</h3>
+          <p className="text-gray-500 text-sm mt-1">{subtitle}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+);
 
 const Explore = () => {
   const navigate = useNavigate();
@@ -29,7 +44,7 @@ const Explore = () => {
         <HeroCarousel />
       </section>
 
-      <AIEngineeringShowcase />
+      <TrustBadges />
 
       <div className="w-full max-w-[1400px] mx-auto px-4 md:px-8 space-y-8 md:space-y-12">
         {/* Latest Ebooks */}

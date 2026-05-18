@@ -17,7 +17,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
-from openai import OpenAI
 from firebase_admin import firestore
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -93,11 +92,6 @@ async def add_security_headers(request: Request, call_next):
 
 app.include_router(chat_router)
 app.include_router(webhook_router)
-
-# 4. OpenAI Client
-client = OpenAI(api_key=settings.openai_api_key, timeout=30.0, max_retries=2) if settings.openai_api_key else None
-
-
 
 # 5. Firebase Setup
 db = get_firestore_client()
