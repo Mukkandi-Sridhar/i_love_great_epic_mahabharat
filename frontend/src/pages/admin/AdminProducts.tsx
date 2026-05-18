@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Package, Save, RefreshCw } from "lucide-react";
+import { SkeletonCard } from "@/components/SkeletonCard";
 
 interface Product {
     id: string;
@@ -62,7 +63,7 @@ const AdminProducts = () => {
             </div>
 
             <div className="grid gap-4">
-                {products.map(p => (
+                {loading ? Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />) : products.map(p => (
                     <Card key={p.id} className="bg-white/5 border-white/10 text-white overflow-hidden">
                         <CardContent className="pt-6">
                             <div className="flex flex-wrap items-center justify-between gap-6">

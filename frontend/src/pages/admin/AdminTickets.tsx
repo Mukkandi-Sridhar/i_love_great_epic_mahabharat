@@ -6,6 +6,8 @@ import { ArrowLeft, MessageSquare, CheckCircle, Clock, Send, Instagram, Mail } f
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { BACKEND_URL, adminHeaders } from "@/services/api";
+import { SkeletonCard } from "@/components/SkeletonCard";
 
 interface Ticket {
     id: string;
@@ -32,7 +34,7 @@ const AdminTickets = () => {
             const snap = await getDocs(query(collection(db, "tickets"), orderBy("createdAt", "desc")));
             setTickets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Ticket)));
         } catch (e) {
-            console.error(e);
+            toast({ title: "Failed to load tickets", variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -49,9 +51,9 @@ const AdminTickets = () => {
 
         setResolving(ticket.id);
         try {
-            const res = await fetch(`http://localhost:8000/admin/tickets/${ticket.id}/reply`, {
+            const res = await fetch(`${BACKEND_URL}/admin/tickets/${ticket.id}/reply`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: adminHeaders(),
                 body: JSON.stringify({ reply })
             });
 
@@ -62,7 +64,7 @@ const AdminTickets = () => {
                 toast({ title: "Operation Failed", variant: "destructive" });
             }
         } catch (e) {
-            console.error(e);
+            toast({ title: "Operation Failed", variant: "destructive" });
         } finally {
             setResolving(null);
         }
@@ -80,7 +82,7 @@ const AdminTickets = () => {
                     </div>
                 </div>
 
-                {loading ? <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div> : (
+                {loading ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
                     <div className="grid gap-6">
                         {tickets.length === 0 && <p className="text-center text-gray-500 py-20 italic">No support tickets found.</p>}
                         {tickets.map((t) => (

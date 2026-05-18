@@ -2,12 +2,12 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { Star, Shield, Download, Smartphone, Check, Share2, ShoppingBag, ArrowLeft, ExternalLink, Heart, Truck, ChevronDown, ChevronUp, MessageCircle, ThumbsUp, Verified, Package, Clock, Award, Headphones, Zap, BookOpen, Target, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import product1 from "@/assets/product-1.png";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { fetchOwnedProductIds, subscribeToOwnedProductIds } from "@/services/db";
+import { subscribeToOwnedProductIds } from "@/services/db";
 import ThreeDBook from "@/components/ThreeDBook";
 import { allProducts } from "@/data/products";
 import RecentlyViewed from "@/components/RecentlyViewed";
+import { useToast } from "@/hooks/use-toast";
 
 // Rating Bar Component - Premium Design
 const RatingBar = ({ stars, percentage }: { stars: number; percentage: number }) => (
@@ -107,20 +107,6 @@ const productContent = {
       { question: "Can I print it?", answer: "Yes, the PDF is print-friendly. You can print specific chapters or the whole book for personal reading." },
     ]
   },
-  sdcard: {
-    reviews: [
-      { name: "Ramesh K.", rating: 5, date: "2 days ago", comment: "Divine experience! The audio quality is exceptional and the narration captures the essence of Mahabharat perfectly.", verified: true },
-      { name: "Priya Sharma", rating: 5, date: "1 week ago", comment: "Best purchase I've made this year. The SD card worked perfectly in my car.", verified: true },
-      { name: "Arun Menon", rating: 4, date: "2 weeks ago", comment: "Great collection. Delivery was very fast!", verified: true },
-      { name: "Lakshmi R.", rating: 5, date: "3 weeks ago", comment: "My children love listening to these stories. Thank you!", verified: true },
-    ],
-    faqs: [
-      { question: "What format is the audio in?", answer: "All audio files are in high-quality MP3 format (320kbps)." },
-      { question: "Can I use the SD card in my car?", answer: "Yes! The SD card is standard class 10 and works with all car audio systems." },
-      { question: "Is this the complete Mahabharat?", answer: "Yes, this collection includes all 198 episodes." },
-      { question: "What if the card stops working?", answer: "We offer a 1-year replacement warranty." },
-    ]
-  },
   pendrive: {
     reviews: [
       { name: "Suresh Babu", rating: 5, date: "1 day ago", comment: "Excellent Metal Pendrive. Very sturdy and looks premium. The audio clarity is amazing.", verified: true },
@@ -141,24 +127,15 @@ const ProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useFirebase();
+  const { toast } = useToast();
   const [isOwned, setIsOwned] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
 
   // Use the imported allProducts directly. No useMemo needed for a static import array.
   const product = useMemo(() => allProducts.find((p) => p.id === id), [id]);
 
-  // Select content based on type (default to ebook if missing)
-  const getContentType = () => {
-    if (!product) return 'ebook';
-    if (product.type === 'sdcard') return 'sdcard';
-    if (product.type === 'pendrive') return 'pendrive';
-    return 'ebook';
-  };
-
-  const contentType = getContentType();
-  const contentData = productContent[contentType as keyof typeof productContent];
-  // Fallback to ebook data if undefined (safety)
-  const { reviews, faqs } = contentData || productContent.ebook;
+  const contentData = product ? productContent[product.type as keyof typeof productContent] || productContent["pendrive"] : productContent.ebook;
+  const { reviews, faqs } = contentData;
 
   // Shared Rating Distribution
   const ratingBreakdown = [
@@ -178,7 +155,6 @@ const ProductDetail = () => {
     // Subscribe to ownership changes in real-time
     const unsubscribe = subscribeToOwnedProductIds(user.uid, (ownedIds) => {
       setIsOwned(ownedIds.has(id));
-      console.log(`[Real-time] Ownership check for ${id}:`, ownedIds.has(id));
     });
 
     return () => unsubscribe();
@@ -192,7 +168,7 @@ const ProductDetail = () => {
     localStorage.setItem("sacred_history", JSON.stringify(updatedHistory));
   }, [id]);
 
-  const handleShare = (platform?: 'whatsapp' | 'twitter' | 'copy') => {
+  const handleShare = async (platform?: 'whatsapp' | 'twitter' | 'copy') => {
     if (!product) return;
     const url = window.location.href;
     const text = `Check out this divine collection: ${product.title}`;
@@ -201,15 +177,24 @@ const ProductDetail = () => {
       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text + ' ' + url)}`, '_blank');
     } else if (platform === 'twitter') {
       window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
+    } else if (navigator.share) {
+      await navigator.share({ title: product.title, text, url }).catch(() => undefined);
     } else {
-      navigator.clipboard.writeText(url);
-      alert("Link copied to clipboard");
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Link copied", description: "Product link copied to clipboard." });
     }
   };
 
   const handleAction = () => {
-    if (isOwned && product?.driveLink) {
-      window.open(product.driveLink, "_blank");
+    if (!product) return;
+    if (isOwned && product?.type === "ebook") {
+      if (product.driveLink) {
+        window.open(product.driveLink, "_blank");
+      } else {
+        toast({ title: "Access pending", description: "The download link will be added shortly." });
+      }
+    } else if (isOwned && product?.isPhysical) {
+      toast({ title: "Tracking info", description: "Check your email for tracking info." });
     } else {
       if (product.stockCount === 0) return; // Locked
       // Pass the product type to payment page to trigger correct flow (Shipping vs Digital)
@@ -338,16 +323,18 @@ const ProductDetail = () => {
                 <div className={`w-2 h-2 rounded-full animate-pulse ${product.stockCount && product.stockCount > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Sacred Status</span>
               </div>
-              <span className={`text-[11px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${product.stockCount && product.stockCount > 10
+              <span className={`text-[11px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${product.stockCount && product.stockCount > 20
                 ? 'text-emerald-400 bg-emerald-500/10'
                 : product.stockCount && product.stockCount > 0
                   ? 'text-orange-400 bg-orange-500/10'
                   : 'text-red-400 bg-red-500/10'
                 }`}>
-                {product.stockCount && product.stockCount > 10
-                  ? "Abundant Stock"
-                  : product.stockCount && product.stockCount > 0
-                    ? `Only ${product.stockCount} Remnants Left!`
+                {product.stockCount && product.stockCount > 20
+                  ? "In Stock"
+                  : product.stockCount && product.stockCount <= 5 && product.stockCount > 0
+                    ? `Only ${product.stockCount} left!`
+                    : product.stockCount && product.stockCount <= 20 && product.stockCount > 0
+                      ? "Limited Stock"
                     : "Out of Reach"}
               </span>
             </div>
@@ -356,7 +343,7 @@ const ProductDetail = () => {
 
         {/* Delivery Banner */}
         <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/5 to-transparent rounded-xl border border-primary/10">
-          {product.type === 'sdcard' ? (
+          {product.isPhysical ? (
             <>
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
                 <Truck className="w-6 h-6 text-primary" />
@@ -493,7 +480,7 @@ const ProductDetail = () => {
             onClick={handleAction}
           >
             {isOwned ? (
-              <><ExternalLink className="mr-2 w-4 h-4" /> Open</>
+              <><ExternalLink className="mr-2 w-4 h-4" /> Access Your Purchase</>
             ) : product.isPhysical && product.stockCount === 0 ? (
               "Out Of Stock"
             ) : (
@@ -511,7 +498,7 @@ const ProductDetail = () => {
           onClick={handleAction}
         >
           {isOwned ? (
-            <><ExternalLink className="mr-2 w-5 h-5" /> View Content</>
+            <><ExternalLink className="mr-2 w-5 h-5" /> Access Your Purchase</>
           ) : (
             <><ShoppingBag className="mr-2 w-5 h-5" /> Buy Now • ₹{product.price}</>
           )}

@@ -69,12 +69,12 @@ export const ebooks: Product[] = [
             { icon: "mobile", text: "Mobile Optimized PDF" },
             { icon: "download", text: "Instant Download" }
         ],
-        driveLink: "#",
+        // TODO: Add real drive link before launch.
         isPhysical: false
     },
 ];
 
-export const sdCards: Product[] = [
+export const pendrives: Product[] = [
     {
         id: "pd-1",
         image: pendrive1,
@@ -169,4 +169,4 @@ export const sdCards: Product[] = [
     },
 ];
 
-export const allProducts = [...ebooks, ...sdCards];
+export const allProducts = [...ebooks, ...pendrives];

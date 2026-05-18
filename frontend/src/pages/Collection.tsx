@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import { fetchPurchases, subscribeToPurchases } from "@/services/db";
 import { allProducts } from "@/data/products";
+import { SkeletonCard } from "@/components/SkeletonCard";
 
 type PurchaseItem = {
   id: string;
@@ -20,7 +21,7 @@ type PurchaseItem = {
 const Collection = () => {
   const navigate = useNavigate();
   const { user } = useFirebase();
-  const [activeFilter, setActiveFilter] = useState<"all" | "ebook" | "sdcard" | "pendrive">("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "ebook" | "pendrive">("all");
   const [purchases, setPurchases] = useState<PurchaseItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -47,7 +48,6 @@ const Collection = () => {
 
       setPurchases(enrichedItems as PurchaseItem[]);
       setLoading(false);
-      console.log(`[Real-time] Collection updated: ${enrichedItems.length} items.`);
     });
 
     return () => unsubscribe();
@@ -64,7 +64,7 @@ const Collection = () => {
   const stats = {
     total: purchases.length,
     ebooks: purchases.filter((p) => p.type === "ebook").length,
-    sdcards: purchases.filter((p) => p.type === "sdcard").length,
+    pendrives: purchases.filter((p) => p.type === "pendrive").length,
   };
 
   return (
@@ -81,9 +81,10 @@ const Collection = () => {
 
       <main className="px-4 md:px-6 pt-6 max-w-7xl mx-auto">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 md:py-32 animate-fade-in px-4">
-            <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-sm text-muted-foreground">Loading your collection...</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <SkeletonCard key={index} />
+            ))}
           </div>
         ) : purchases.length > 0 ? (
           <div className="space-y-6 animate-fade-in">
@@ -104,11 +105,11 @@ const Collection = () => {
                 Ebooks ({stats.ebooks})
               </Button>
               <Button
-                variant={activeFilter === "sdcard" ? "default" : "outline"}
+                variant={activeFilter === "pendrive" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setActiveFilter("sdcard")}
+                onClick={() => setActiveFilter("pendrive")}
               >
-                SD Cards ({stats.sdcards})
+                Pendrives ({stats.pendrives})
               </Button>
             </div>
 
@@ -134,7 +135,7 @@ const Collection = () => {
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                         <span className="inline-flex items-center gap-1">
                           <ShoppingBag className="w-3 h-3" />
-                          {item.type === "ebook" ? "Digital Ebook" : "SD Card"}
+                          {item.type === "ebook" ? "Digital Ebook" : "Pendrive"}
                         </span>
                         {item.createdAt && (
                           <span className="inline-flex items-center gap-1">
@@ -164,7 +165,7 @@ const Collection = () => {
               <Book className="w-16 h-16 md:w-20 md:h-20 text-muted-foreground" />
             </div>
             <h3 className="text-2xl md:3xl font-serif font-bold mb-3 md:mb-4 text-foreground text-center">
-              Your Collection is Empty
+              No purchases yet. Explore our collection →
             </h3>
             <p className="text-sm md:text-base text-muted-foreground text-center max-w-md mb-8 md:mb-10 leading-relaxed">
               Start your spiritual journey by exploring our authentic Mahabharat collection

@@ -55,7 +55,7 @@ const Shipping = () => {
                             <span className="text-primary/50 text-2xl">02</span> International Shipping
                         </h3>
                         <p className="text-sm text-gray-300 leading-relaxed">
-                            We ship our physical SD Cards globally. International orders typically take <strong>10-15 business days</strong> depending on the destination country and customs clearance procedures. Please note that any customs duties or taxes levied by the destination country are the responsibility of the customer.
+                            We ship our physical pendrives globally. International orders typically take <strong>10-15 business days</strong> depending on the destination country and customs clearance procedures. Please note that any customs duties or taxes levied by the destination country are the responsibility of the customer.
                         </p>
                     </section>
 

@@ -46,8 +46,8 @@ const AdminSettings = () => {
         try {
             const snap = await getDoc(doc(db, "settings", "app"));
             if (snap.exists()) setSettings(snap.data() as AppSettings);
-        } catch (e) {
-            console.error(e);
+        } catch {
+            toast({ title: "Settings unavailable", variant: "destructive" });
         } finally {
             setLoading(false);
         }

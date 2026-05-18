@@ -1,40 +1,31 @@
-# I Love Great Epic Mahabharat
+# Frontend
 
-## Project info
+React/Vite customer experience for I Love Great Epic Mahabharat.
 
-**URL**: https://github.com/Mukkandi-Sridhar/i_love_great_epic_mahabharat
+## Highlights
 
-## How can I edit this code?
+- Storefront, product detail pages, protected collection, profile, support, and admin surfaces.
+- AI support chat with visible model, retrieval, tool, and cache metadata.
+- Firebase-authenticated flows for purchases, support, notifications, and profile data.
+- Lazy-loaded routes, error boundary, responsive navigation, and production build config.
 
-**Use your preferred IDE**
+## Run
 
-If you want to work locally using your own IDE, you can clone this repo and push changes.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone https://github.com/Mukkandi-Sridhar/i_love_great_epic_mahabharat.git
-
-# Step 2: Navigate to the project directory.
-cd i_love_great_epic_mahabharat
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm install
 npm run dev
 ```
 
-## What technologies are used for this project?
+## Build
 
-This project is built with:
+```bash
+npm run build
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Key Files
 
+- `src/pages/Explore.tsx`: homepage/storefront composition.
+- `src/components/AIEngineeringShowcase.tsx`: AI system story on the product surface.
+- `src/components/ChatInterface.tsx`: support assistant experience.
+- `src/services/chat.ts`: typed client for the FastAPI chat endpoint.
+- `src/contexts/FirebaseContext.tsx`: authentication and user session provider.

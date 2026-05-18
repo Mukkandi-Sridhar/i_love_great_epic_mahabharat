@@ -63,7 +63,7 @@ const Navbar = () => {
     const navLinks = [
         { name: 'Store', path: '/all-products' },
         { name: 'Ebooks', path: '/all-products?type=ebooks' },
-        { name: 'SD Cards', path: '/all-products?type=sdcards' },
+        { name: 'Pendrives', path: '/all-products?type=pendrives' },
         { name: 'Support', path: '/support' },
     ];
 
@@ -294,8 +294,8 @@ const Navbar = () => {
                                                             <button onClick={() => setSearchQuery("ebook")} className="px-4 py-2 rounded-full bg-secondary/10 hover:bg-primary/20 hover:text-primary text-sm transition-colors border border-white/5">
                                                                 E-books
                                                             </button>
-                                                            <button onClick={() => setSearchQuery("sd card")} className="px-4 py-2 rounded-full bg-secondary/10 hover:bg-primary/20 hover:text-primary text-sm transition-colors border border-white/5">
-                                                                SD Cards
+                                                            <button onClick={() => setSearchQuery("pendrive")} className="px-4 py-2 rounded-full bg-secondary/10 hover:bg-primary/20 hover:text-primary text-sm transition-colors border border-white/5">
+                                                                Pendrives
                                                             </button>
                                                             <button onClick={() => setSearchQuery("audio")} className="px-4 py-2 rounded-full bg-secondary/10 hover:bg-primary/20 hover:text-primary text-sm transition-colors border border-white/5">
                                                                 Audio

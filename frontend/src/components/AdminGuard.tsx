@@ -13,8 +13,8 @@ const AdminGuard = ({ children }: { children: ReactNode }) => {
         if (loading) return;
         if (!user) { navigate("/auth"); return; }
 
-        getDoc(doc(db, "admins", user.uid)).then((snap) => {
-            if (snap.exists()) {
+        getDoc(doc(db, "users", user.uid)).then((snap) => {
+            if (snap.exists() && snap.data()?.isAdmin === true) {
                 setIsAdmin(true);
             } else {
                 navigate("/");

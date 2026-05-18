@@ -14,8 +14,8 @@ const Profile = () => {
   // Check if the logged-in user is an admin
   useEffect(() => {
     if (!user) return;
-    getDoc(doc(db, "admins", user.uid))
-      .then((snap) => setIsAdmin(snap.exists()))
+    getDoc(doc(db, "users", user.uid))
+      .then((snap) => setIsAdmin(snap.exists() && snap.data()?.isAdmin === true))
       .catch(() => setIsAdmin(false));
   }, [user]);
 

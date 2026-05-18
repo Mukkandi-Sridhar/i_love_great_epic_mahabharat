@@ -5,6 +5,8 @@ import { db } from "@/lib/firebase";
 import { ArrowLeft, Ban, ShieldCheck, Mail, Calendar, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { BACKEND_URL, adminHeaders } from "@/services/api";
+import { SkeletonCard } from "@/components/SkeletonCard";
 
 interface AdminUser {
     id: string;
@@ -29,7 +31,7 @@ const AdminUsers = () => {
             const snap = await getDocs(query(collection(db, "users"), orderBy("createdAt", "desc")));
             setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AdminUser)));
         } catch (e) {
-            console.error(e);
+            toast({ title: "Failed to load users", variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -39,8 +41,9 @@ const AdminUsers = () => {
 
     const toggleBlock = async (uid: string, currentBlocked: boolean) => {
         try {
-            const res = await fetch(`http://localhost:8000/admin/users/${uid}/block?blocked=${!currentBlocked}`, {
-                method: "PATCH"
+            const res = await fetch(`${BACKEND_URL}/admin/users/${uid}/block?blocked=${!currentBlocked}`, {
+                method: "PATCH",
+                headers: adminHeaders(),
             });
             if (res.ok) {
                 toast({
@@ -50,7 +53,7 @@ const AdminUsers = () => {
                 loadUsers();
             }
         } catch (e) {
-            console.error(e);
+            toast({ title: "Update failed", variant: "destructive" });
         }
     };
 
@@ -74,7 +77,7 @@ const AdminUsers = () => {
                     />
                 </div>
 
-                {loading ? <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div> : (
+                {loading ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
                     <div className="grid gap-3">
                         {filtered.length === 0 && <p className="text-center text-gray-400 py-10">No users found matching your search.</p>}
                         {filtered.map((u) => (

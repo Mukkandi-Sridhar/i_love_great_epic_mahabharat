@@ -28,8 +28,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 setSettings(doc.data() as AppSettings);
             }
             setLoading(false);
-        }, (err) => {
-            console.error("Settings listener error:", err);
+        }, () => {
             setLoading(false);
         });
 

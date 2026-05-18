@@ -16,11 +16,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { ProductType, getUserProfile } from "@/services/db";
+import { getUserProfile } from "@/services/db";
 import { completeOrder } from "@/services/payment";
 import { allProducts } from "@/data/products";
+import { BACKEND_URL } from "@/services/api";
 
 const Payment = () => {
   const { id } = useParams();
@@ -40,17 +42,25 @@ const Payment = () => {
   const [state, setState] = useState("");
   const [altPhone, setAltPhone] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingProduct, setLoadingProduct] = useState(true);
 
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number; type: string } | null>(null);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
-  const basePrice = product?.price || 499;
-  const [finalPrice, setFinalPrice] = useState(basePrice);
+  const basePrice = product?.price || 0;
+  const [finalPrice, setFinalPrice] = useState(0);
 
   useEffect(() => {
+    setLoadingProduct(false);
     if (product) setFinalPrice(product.price);
   }, [product]);
+
+  useEffect(() => {
+    if (!loadingProduct && !product) {
+      navigate("/explore", { replace: true });
+    }
+  }, [loadingProduct, navigate, product]);
 
   useEffect(() => {
     const load = async () => {
@@ -72,11 +82,27 @@ const Payment = () => {
   const type = searchParams.get("type");
   const isPhysical = product?.type === "sdcard" || product?.type === "pendrive" || type === "sdcard" || type === "pendrive";
 
+  const missingFields = useMemo(() => {
+    const missing: string[] = [];
+    if (!/^[6-9]\d{9}$/.test(phone)) missing.push("valid WhatsApp number");
+    if (!email.trim()) missing.push("email");
+    if (isPhysical) {
+      if (!name.trim()) missing.push("full name");
+      if (!address.trim()) missing.push("address");
+      if (!city.trim()) missing.push("city");
+      if (!/^\d{6}$/.test(pincode)) missing.push("6-digit pincode");
+      if (!state.trim()) missing.push("state");
+    }
+    return missing;
+  }, [address, city, email, isPhysical, name, phone, pincode, state]);
+
+  const isFormIncomplete = missingFields.length > 0;
+
   const validateCoupon = async () => {
     if (!couponCode) return;
     setValidatingCoupon(true);
     try {
-      const res = await fetch("http://localhost:8000/validate-coupon", {
+      const res = await fetch(`${BACKEND_URL}/validate-coupon`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: couponCode, amount: basePrice })
@@ -100,8 +126,13 @@ const Payment = () => {
 
   const handlePayment = async () => {
     if (!user) { navigate("/auth"); return; }
-    if (!phone || phone.length !== 10) {
+    if (!product) { navigate("/explore", { replace: true }); return; }
+    if (!/^[6-9]\d{9}$/.test(phone)) {
       toast({ title: "Required", description: "Please enter a valid WhatsApp number.", variant: "destructive" });
+      return;
+    }
+    if (isPhysical && !/^\d{6}$/.test(pincode)) {
+      toast({ title: "Required", description: "Please enter a valid 6-digit pincode.", variant: "destructive" });
       return;
     }
     if (isPhysical && (!name || !address || !city || !pincode || !state)) {
@@ -116,9 +147,9 @@ const Payment = () => {
         email: user.email || email,
         name: user.displayName || name,
         phone,
-        productType: product?.type || 'ebook',
+        productType: product.type,
         productId: id || "",
-        basePrice: product?.price || 499,
+        basePrice: product.price,
         couponCode: appliedCoupon?.code,
         shipping: isPhysical ? { name, address, city, pincode, state, altPhone } : undefined,
       });
@@ -134,6 +165,23 @@ const Payment = () => {
       setLoading(false);
     }
   };
+
+  if (loadingProduct || (finalPrice === 0 && !appliedCoupon)) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white pb-20">
+        <header className="px-5 h-16 flex items-center justify-between border-b border-white/5 bg-black/40 sticky top-0 z-50 backdrop-blur-md">
+          <Skeleton className="h-9 w-9 rounded-full bg-white/10" />
+          <Skeleton className="h-4 w-24 bg-white/10" />
+          <div className="w-9" />
+        </header>
+        <div className="max-w-[480px] mx-auto px-5 py-8 space-y-8">
+          <Skeleton className="h-28 rounded-3xl bg-white/10" />
+          <Skeleton className="h-40 rounded-3xl bg-white/10" />
+          <Skeleton className="h-52 rounded-3xl bg-white/10" />
+        </div>
+      </div>
+    );
+  }
 
   if (!product) return null;
 
@@ -164,6 +212,11 @@ const Payment = () => {
               {product.type === 'ebook' ? "Digital Access" : "Physical Artifact"}
             </p>
             <p className="text-lg font-black text-primary mt-1">₹{finalPrice}</p>
+            {finalPrice > 999 && (
+              <span className="mt-2 inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                Free Delivery
+              </span>
+            )}
           </div>
         </div>
 
@@ -272,13 +325,15 @@ const Payment = () => {
             </div>
           </div>
 
-          <Button
-            onClick={handlePayment}
-            disabled={loading}
-            className="w-full h-16 rounded-[1.5rem] bg-primary text-black text-base font-black uppercase tracking-widest shadow-[0_15px_30px_-10px_rgba(212,175,55,0.4)] hover:scale-[1.01] active:scale-95 transition-all"
-          >
-            {loading ? "Processing..." : "Pay & Start Journey"}
-          </Button>
+          <div title={isFormIncomplete ? `Missing: ${missingFields.join(", ")}` : "Ready to pay"}>
+            <Button
+              onClick={handlePayment}
+              disabled={loading || isFormIncomplete}
+              className="w-full h-16 rounded-[1.5rem] bg-primary text-black text-base font-black uppercase tracking-widest shadow-[0_15px_30px_-10px_rgba(212,175,55,0.4)] hover:scale-[1.01] active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Processing..." : "Pay & Start Journey"}
+            </Button>
+          </div>
 
           <div className="flex justify-center gap-6 pt-4 grayscale opacity-30">
             <BadgeCheck className="w-5 h-5" />

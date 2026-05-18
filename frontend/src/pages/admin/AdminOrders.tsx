@@ -5,6 +5,8 @@ import { db } from "@/lib/firebase";
 import { ArrowLeft, ChevronDown, ChevronUp, Save, Truck, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { BACKEND_URL, adminHeaders } from "@/services/api";
+import { SkeletonCard } from "@/components/SkeletonCard";
 
 interface Order {
     id: string;
@@ -48,7 +50,7 @@ const AdminOrders = () => {
             setOrders(data);
             setFiltered(data);
         } catch (e) {
-            console.error(e);
+            toast({ title: "Failed to load orders", variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -69,9 +71,9 @@ const AdminOrders = () => {
 
     const updateOrder = async (orderId: string, status: string, tracking: string, note: string) => {
         try {
-            const res = await fetch(`http://localhost:8000/admin/orders/${orderId}`, {
+            const res = await fetch(`${BACKEND_URL}/admin/orders/${orderId}`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers: adminHeaders(),
                 body: JSON.stringify({ status, tracking_number: tracking, admin_note: note })
             });
 
@@ -82,7 +84,7 @@ const AdminOrders = () => {
                 toast({ title: "Update Failed", variant: "destructive" });
             }
         } catch (e) {
-            console.error(e);
+            toast({ title: "Update Failed", variant: "destructive" });
         }
     };
 
@@ -122,9 +124,9 @@ const AdminOrders = () => {
                     </select>
                 </div>
 
-                {loading ? <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div> : (
+                {loading ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
                     <div className="space-y-4">
-                        {filtered.length === 0 && <p className="text-center text-gray-400 py-10">No orders found.</p>}
+                        {filtered.length === 0 && <p className="text-center text-gray-400 py-10">No orders yet. Start your spiritual journey →</p>}
                         {filtered.map((o) => (
                             <div key={o.id} className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden transition-all">
                                 <div className="flex flex-wrap items-center gap-4 p-4 cursor-pointer hover:bg-white/8" onClick={() => setExpanded(expanded === o.id ? null : o.id)}>

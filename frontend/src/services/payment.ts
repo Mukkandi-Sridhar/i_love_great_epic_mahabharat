@@ -1,4 +1,4 @@
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+import { BACKEND_URL, jsonHeaders } from "@/services/api";
 
 export interface OrderOptions {
   uid: string;
@@ -26,7 +26,7 @@ export const completeOrder = async (options: OrderOptions): Promise<OrderResult>
   try {
     const res = await fetch(`${BACKEND_URL}/complete-order`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify({
         uid: options.uid,
         email: options.email,

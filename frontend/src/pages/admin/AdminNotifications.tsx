@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Bell, Send, Users, User } from "lucide-react";
+import { BACKEND_URL, adminHeaders } from "@/services/api";
 
 const AdminNotifications = () => {
     const [title, setTitle] = useState("");
@@ -29,9 +30,9 @@ const AdminNotifications = () => {
                 // But let's assume broadast if no targetEmail.
             }
 
-            const res = await fetch("http://localhost:8000/admin/send-notification", {
+            const res = await fetch(`${BACKEND_URL}/admin/send-notification`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: adminHeaders(),
                 body: JSON.stringify({
                     title,
                     message,
@@ -47,7 +48,7 @@ const AdminNotifications = () => {
                 toast({ title: "Failed", description: "Could not send notification", variant: "destructive" });
             }
         } catch (e) {
-            console.error(e);
+            toast({ title: "Failed", description: "Could not send notification", variant: "destructive" });
         } finally {
             setSending(false);
         }

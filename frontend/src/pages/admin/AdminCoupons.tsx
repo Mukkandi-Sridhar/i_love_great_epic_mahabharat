@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Ticket, Plus, Trash2, Check, X } from "lucide-react";
+import { SkeletonCard } from "@/components/SkeletonCard";
 
 interface Coupon {
     id: string;
@@ -28,7 +29,7 @@ const AdminCoupons = () => {
             const snap = await getDocs(collection(db, "coupons"));
             setCoupons(snap.docs.map(d => ({ id: d.id, ...d.data() } as Coupon)));
         } catch (e) {
-            console.error(e);
+            toast({ title: "Error", description: "Failed to load coupons", variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -59,7 +60,7 @@ const AdminCoupons = () => {
         try {
             await setDoc(doc(db, "coupons", coupon.id), { enabled: !coupon.enabled }, { merge: true });
             loadCoupons();
-        } catch (e) { console.error(e); }
+        } catch (e) { toast({ title: "Error", description: "Failed to update coupon", variant: "destructive" }); }
     };
 
     const deleteCoupon = async (id: string) => {
@@ -67,7 +68,7 @@ const AdminCoupons = () => {
         try {
             await deleteDoc(doc(db, "coupons", id));
             loadCoupons();
-        } catch (e) { console.error(e); }
+        } catch (e) { toast({ title: "Error", description: "Failed to delete coupon", variant: "destructive" }); }
     };
 
     return (
@@ -103,7 +104,7 @@ const AdminCoupons = () => {
             </Card>
 
             <div className="grid gap-4">
-                {coupons.map(c => (
+                {loading ? Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />) : coupons.map(c => (
                     <div key={c.id} className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl">
                         <div>
                             <span className="text-lg font-mono font-bold text-yellow-400 mr-4">{c.code}</span>

@@ -42,16 +42,16 @@ const Refunds = () => {
 
                     <section>
                         <h3 className="font-serif font-bold text-xl mb-4 text-white flex items-center gap-2">
-                            <span className="text-primary/50 text-2xl">02</span> Physical Products (SD Cards)
+                            <span className="text-primary/50 text-2xl">02</span> Physical Products (Pendrives)
                         </h3>
                         <div className="space-y-4">
                             <p className="text-sm text-gray-300 leading-relaxed">
-                                We accept returns for physical SD Cards within <strong>7 days</strong> of delivery under the following conditions:
+                                We accept returns for physical pendrives within <strong>7 days</strong> of delivery under the following conditions:
                             </p>
                             <ul className="list-disc list-inside text-sm text-gray-400 space-y-2 ml-4">
                                 <li>The product must be unused and in the same condition that you received it.</li>
                                 <li>It must be in the original packaging.</li>
-                                <li>The seal on the SD Card package must be intact.</li>
+                                <li>The seal on the pendrive package must be intact.</li>
                             </ul>
                         </div>
                     </section>

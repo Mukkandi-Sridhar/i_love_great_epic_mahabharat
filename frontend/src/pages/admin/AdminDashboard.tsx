@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { collection, getDocs, query, orderBy, limit, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Package, DollarSign, Ticket, Users, BookOpen, Key, Bell, Settings, ArrowRight } from "lucide-react";
+import { SkeletonCard } from "@/components/SkeletonCard";
 
 interface Stats {
     totalOrders: number;
@@ -63,8 +64,8 @@ const AdminDashboard = () => {
                     .slice(-7);
                 setDailyRevenue(sortedDaily);
 
-            } catch (e) {
-                console.error("Failed to load admin stats", e);
+            } catch {
+                setStats({ totalOrders: 0, totalRevenue: 0, openTickets: 0, totalUsers: 0, totalBooks: 0 });
             } finally {
                 setLoading(false);
             }
@@ -108,8 +109,10 @@ const AdminDashboard = () => {
                 </div>
 
                 {loading ? (
-                    <div className="flex justify-center py-20">
-                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {Array.from({ length: 4 }).map((_, index) => (
+                            <SkeletonCard key={index} />
+                        ))}
                     </div>
                 ) : (
                     <div className="space-y-8">

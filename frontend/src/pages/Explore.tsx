@@ -5,11 +5,12 @@ import ProductCard from "@/components/ProductCard";
 
 import TestimonialMarquee from "@/components/TestimonialMarquee";
 import DivineJourney from "@/components/DivineJourney";
-import { ebooks, sdCards } from "@/data/products";
+import { ebooks, pendrives } from "@/data/products";
 import KrishnaHero from "@/components/KrishnaHero";
 import DivineSeparator from "@/components/DivineSeparator";
 import brandLogo from "@/assets/logo.png";
 import RecentlyViewed from "@/components/RecentlyViewed";
+import AIEngineeringShowcase from "@/components/AIEngineeringShowcase";
 import { BookOpen, Target, ArrowRight } from "lucide-react";
 import { useFirebase } from "@/contexts/FirebaseContext";
 
@@ -27,6 +28,8 @@ const Explore = () => {
       <section className="relative w-full overflow-hidden pointer-events-none select-none">
         <HeroCarousel />
       </section>
+
+      <AIEngineeringShowcase />
 
       <div className="w-full max-w-[1400px] mx-auto px-4 md:px-8 space-y-8 md:space-y-12">
         {/* Latest Ebooks */}
@@ -67,7 +70,7 @@ const Explore = () => {
           <DivineSeparator />
         </div>
 
-        {/* SD Cards Collection */}
+        {/* Pendrives Collection */}
         <section>
           <div className="mb-4 md:mb-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -75,12 +78,12 @@ const Explore = () => {
                 <Target className="w-5 h-5 md:w-6 md:h-6 text-primary" />
               </div>
               <div>
-                <h2 className="text-lg md:text-2xl font-bold text-white">SD Cards Collection</h2>
+                <h2 className="text-lg md:text-2xl font-bold text-white">Pendrives Collection</h2>
                 <p className="text-xs md:text-sm text-gray-500">Physical delivery to doorstep</p>
               </div>
             </div>
             <button
-              onClick={() => navigate("/all-products?type=sdcards")}
+              onClick={() => navigate("/all-products?type=pendrives")}
               className="group flex items-center text-xs md:text-sm font-semibold text-primary hover:text-white transition-colors"
             >
               View all <ArrowRight className="ml-1 w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -90,7 +93,7 @@ const Explore = () => {
           <div
             className="flex overflow-x-auto gap-4 pb-6 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide"
           >
-            {sdCards.map((product) => (
+            {pendrives.map((product) => (
               <div key={product.id} className="min-w-[170px] w-[45vw] md:min-w-0 md:w-auto">
                 <ProductCard {...product} />
               </div>

@@ -1,22 +1,36 @@
 import os
 import json
+import hashlib
 import logging
 import traceback
 import time
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import List, Optional
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
-import firebase_admin
-from firebase_admin import credentials, firestore
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from firebase_admin import firestore
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
-import razorpay
+from cachetools import TTLCache
+
+from backend.api.chat import router as chat_router
+from backend.api.webhook import router as webhook_router
+from backend.core.config import settings
+from backend.core.firebase import get_firestore_client
+from backend.core.rate_limit import limiter
+from backend.mcp.server import list_tools as list_mcp_tools, warm_tool_cache
+from backend.rag.ingest import close_chroma, ingest_policies, ingest_products
 
 # 1. Setup Logging
 logging.basicConfig(
@@ -25,14 +39,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ChatbotBackend")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Warm RAG and MCP resources on startup, then release local handles."""
+    try:
+        await ingest_policies()
+        await ingest_products()
+        warm_tool_cache()
+        logger.info("RAG pipeline ready")
+    except Exception as exc:
+        logger.warning("Startup warmup failed gracefully: %s", exc)
+    yield
+    close_chroma()
+
 # 2. Load Environment Variables
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+BASE_DIR = os.path.dirname(__file__)
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+CHAT_MODEL = settings.openai_chat_model
+KNOWLEDGE_BASE_PATH = str(settings.policies_path)
 
 # 3. FastAPI App Setup
-app = FastAPI(title="Dharma Divine Chatbot API")
+app = FastAPI(title="Dharma Divine Chatbot API", lifespan=lifespan)
 
 # 4. Rate Limiter Setup (SECURITY)
-limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -40,7 +70,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Security: CORS - Allow All for now (or add your frontend URL)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # CHANGE THIS: Allow all origins for testing
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,37 +91,16 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
+app.include_router(chat_router)
+app.include_router(webhook_router)
+
 # 4. OpenAI Client
-client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY"),
-    timeout=30.0,
-    max_retries=2
-)
+client = OpenAI(api_key=settings.openai_api_key, timeout=30.0, max_retries=2) if settings.openai_api_key else None
 
 
 
 # 5. Firebase Setup
-db = None
-try:
-    cred_path = "serviceAccountKey.json"
-    cred = None
-
-    if os.path.exists(cred_path):
-        cred = credentials.Certificate(cred_path)
-    else:
-        firebase_creds_json = os.environ.get("FIREBASE_CREDENTIALS")
-        if firebase_creds_json:
-            cred = credentials.Certificate(json.loads(firebase_creds_json))
-
-    if cred:
-        firebase_admin.initialize_app(cred)
-        db = firestore.client()
-        logger.info("Firebase Initialized Successfully")
-    else:
-        logger.warning("Firebase credentials not found. Database features disabled.")
-
-except Exception as e:
-    logger.error(f"Firebase Init Failed: {e}")
+db = get_firestore_client()
 
 # 6. Models
 class Message(BaseModel):
@@ -126,32 +135,68 @@ class VerifyPaymentRequest(BaseModel):
 SESSION_MEMORY: dict[str, list[dict]] = {}
 
 # 8. Response Cache (10x speed improvement)
-RESPONSE_CACHE: dict[str, dict] = {}  # {cache_key: {"response": str, "expires": float}}
-CACHE_TTL = 3600  # 1 hour cache lifetime
+RESPONSE_CACHE: TTLCache = TTLCache(maxsize=512, ttl=3600)
 
-def get_cache_key(message: str) -> str:
-    """Generate cache key from user message."""
-    normalized = message.lower().strip()
+def load_knowledge_base() -> str:
+    """Load the RAG knowledge base from disk."""
+    try:
+        with open(KNOWLEDGE_BASE_PATH, "r", encoding="utf-8") as file:
+            return file.read()
+    except FileNotFoundError:
+        logger.warning("Knowledge base file not found: %s", KNOWLEDGE_BASE_PATH)
+    except Exception as exc:
+        logger.error("Knowledge base load failed: %s", exc)
+    return ""
+
+KNOWLEDGE_BASE = load_knowledge_base()
+
+def retrieve_knowledge_snippets(query: str, limit: int = 3) -> list[str]:
+    """Small dependency-free retrieval layer for policy/product grounding."""
+    if not query or not KNOWLEDGE_BASE:
+        return []
+
+    query_terms = {
+        token.strip(".,!?;:()[]{}\"'").lower()
+        for token in query.split()
+        if len(token.strip(".,!?;:()[]{}\"'")) > 2
+    }
+
+    sections = [section.strip() for section in KNOWLEDGE_BASE.split("---") if section.strip()]
+    scored_sections = []
+    for section in sections:
+        normalized = section.lower()
+        score = sum(1 for term in query_terms if term in normalized)
+        if score:
+            scored_sections.append((score, section))
+
+    scored_sections.sort(key=lambda item: item[0], reverse=True)
+    return [section for _, section in scored_sections[:limit]]
+
+def should_cache_message(message: str) -> bool:
+    """Avoid caching identity, memory, payment, and support workflows."""
+    sensitive_terms = {
+        "name", "earlier", "previous", "first message", "payment", "refund",
+        "issue", "problem", "access", "not received", "instagram", "ticket",
+        "order", "contact", "agent"
+    }
+    normalized = message.lower()
+    return not any(term in normalized for term in sensitive_terms)
+
+def get_cache_key(email: str, message: str) -> str:
+    """Generate cache key from user and message."""
+    normalized = f"{email.lower().strip()}::{message.lower().strip()}"
     return hashlib.md5(normalized.encode()).hexdigest()
 
 def get_cached_response(cache_key: str) -> Optional[str]:
-    """Retrieve cached response if not expired."""
-    if cache_key in RESPONSE_CACHE:
-        cached = RESPONSE_CACHE[cache_key]
-        if time.time() < cached["expires"]:
-            logger.info(f"Cache HIT for key: {cache_key[:8]}...")
-            return cached["response"]
-        else:
-            # Expired, remove it
-            del RESPONSE_CACHE[cache_key]
-    return None
+    """Retrieve cached response; TTLCache handles expiry."""
+    cached = RESPONSE_CACHE.get(cache_key)
+    if cached:
+        logger.info(f"Cache HIT for key: {cache_key[:8]}...")
+    return cached
 
 def set_cached_response(cache_key: str, response: str):
-    """Cache a response with TTL."""
-    RESPONSE_CACHE[cache_key] = {
-        "response": response,
-        "expires": time.time() + CACHE_TTL
-    }
+    """Cache a response using the configured TTLCache."""
+    RESPONSE_CACHE[cache_key] = response
     logger.info(f"Cache SET for key: {cache_key[:8]}...")
 
 # 9. Tools Configuration
@@ -250,100 +295,6 @@ def save_ticket_to_db(data: dict, uid: Optional[str] = None) -> bool:
         logger.error(f"Error saving ticket: {e}")
         return False
 
-# 10. Routes
-@app.post("/chat")
-@limiter.limit("20/minute")  # SECURITY: Max 20 requests per minute per IP
-def chat_endpoint(request: Request, chat_request: ChatRequest):
-    try:
-        user_email = chat_request.email
-        user_name = chat_request.name or "there"
-
-        # Initialize or retrieve session
-        if user_email not in SESSION_MEMORY:
-            SESSION_MEMORY[user_email] = []
-        
-        # Keep last 20 messages context
-        session_history = SESSION_MEMORY[user_email][-20:]
-
-        # Get latest user message for caching
-        latest_user_msg = None
-        for msg in chat_request.messages:
-            if msg.role == "user" and msg.content:
-                latest_user_msg = msg.content
-
-        # Check cache first (only for simple queries, not support tickets)
-        if latest_user_msg and len(session_history) < 2:  # Only cache initial messages
-            cache_key = get_cache_key(latest_user_msg)
-            cached_response = get_cached_response(cache_key)
-            if cached_response:
-                SESSION_MEMORY[user_email].append({"role": "assistant", "content": cached_response})
-                return {"response": cached_response}
-
-        # Prepare conversation with system context
-        system_content = SYSTEM_PROMPT.replace("<name>", user_name)
-        system_content += f"\n\nCONTEXT: The user's name is '{user_name}'."
-        
-        conversation = [{"role": "system", "content": system_content}] + session_history
-        
-        # Append new user messages
-        for msg in chat_request.messages:
-            if msg.content:
-                conversation.append({"role": msg.role, "content": msg.content})
-
-        # OpenAI Call
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=conversation,
-            tools=tools,
-            tool_choice="auto",
-        )
-
-        message = res.choices[0].message
-
-        # Handle Tool Calls
-        if message.tool_calls:
-            tool_call = message.tool_calls[0]
-            logger.info(f"Tool called: {tool_call.function.name}")
-
-            try:
-                args = json.loads(tool_call.function.arguments or "{}")
-                data = {
-                    "email": user_email,
-                    "insta": args.get("instagram_id", "Not provided"),
-                    "msg": args.get("issue_description", "No details"),
-                    "type": "issue",
-                }
-
-                success = save_ticket_to_db(data, uid=chat_request.uid)
-                
-                # Log result to memory but show friendly message to user
-                SESSION_MEMORY[user_email].append({
-                    "role": "assistant",
-                    "content": "[Ticket Saved]" if success else "[Ticket Save Failed]"
-                })
-                return {"response": "We received your issue. We will contact you shortly."}
-
-            except Exception as tool_err:
-                logger.error(f"Tool execution error: {tool_err}")
-                return {"response": "We received your issue. We will contact you shortly."}
-
-        # Handle Normal Response
-        ai_msg = message.content or "We received your issue. We will contact you shortly."
-        SESSION_MEMORY[user_email].append({"role": "assistant", "content": ai_msg})
-        
-        # Cache the response for future use (only simple queries)
-        if latest_user_msg and len(session_history) < 2:
-            cache_key = get_cache_key(latest_user_msg)
-            set_cached_response(cache_key, ai_msg)
-        
-        return {"response": ai_msg}
-
-    except Exception as e:
-        logger.error(f"Endpoint Error: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-
-
 # 11b. Admin Management Models
 class ValidateCouponRequest(BaseModel):
     code: str
@@ -371,6 +322,15 @@ class SendNotificationRequest(BaseModel):
     message: str
     uid: Optional[str] = None  # if None, send to all (caution!)
 
+class AdminReplyRequest(BaseModel):
+    reply: str
+
+def require_admin_secret(request: Request) -> None:
+    """Require the configured admin secret for every admin backend route."""
+    provided = request.headers.get("X-Admin-Secret", "")
+    if not settings.admin_secret or provided != settings.admin_secret:
+        raise HTTPException(status_code=401, detail="Invalid admin secret")
+
 # 11. Simple Order Completion Route (no payment gateway)
 class CompleteOrderRequest(BaseModel):
     uid: str
@@ -385,7 +345,7 @@ class CompleteOrderRequest(BaseModel):
 
 @app.post("/complete-order")
 @limiter.limit("20/minute")
-def complete_order(request: Request, body: CompleteOrderRequest):
+async def complete_order(request: Request, body: CompleteOrderRequest):
     """Instantly completes an order, applying coupons if present, and grants product access."""
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -472,7 +432,7 @@ def complete_order(request: Request, body: CompleteOrderRequest):
 # 11c. Coupon & Admin Control Endpoints
 
 @app.post("/validate-coupon")
-def validate_coupon(body: ValidateCouponRequest):
+async def validate_coupon(body: ValidateCouponRequest):
     """Validates a coupon code and returns the discount."""
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -508,6 +468,7 @@ def validate_coupon(body: ValidateCouponRequest):
         return {
             "valid": True,
             "discount": discount,
+            "final_amount": max(0, body.amount - discount),
             "code": body.code.upper(),
             "type": data["type"],
             "value": data["value"]
@@ -519,8 +480,10 @@ def validate_coupon(body: ValidateCouponRequest):
         raise HTTPException(status_code=500, detail="Validation error")
 
 @app.post("/admin/grant-access")
-def admin_grant_access(body: GrantAccessRequest):
+@limiter.limit("10/minute")
+async def admin_grant_access(request: Request, body: GrantAccessRequest):
     """Manually grants product access to a user (Admin Only)."""
+    require_admin_secret(request)
     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
@@ -549,8 +512,10 @@ def admin_grant_access(body: GrantAccessRequest):
         raise HTTPException(status_code=500, detail="Grant failed")
 
 @app.post("/admin/revoke-access")
-def admin_revoke_access(body: RevokeAccessRequest):
+@limiter.limit("10/minute")
+async def admin_revoke_access(request: Request, body: RevokeAccessRequest):
     """Manually revokes product access from a user (Admin Only)."""
+    require_admin_secret(request)
     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
@@ -561,8 +526,10 @@ def admin_revoke_access(body: RevokeAccessRequest):
         raise HTTPException(status_code=500, detail="Revoke failed")
 
 @app.patch("/admin/orders/{order_id}")
-def admin_update_order(order_id: str, body: UpdateOrderStatusRequest):
+@limiter.limit("10/minute")
+async def admin_update_order(request: Request, order_id: str, body: UpdateOrderStatusRequest):
     """Updates order status and tracking info (Admin Only)."""
+    require_admin_secret(request)
     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
@@ -582,8 +549,10 @@ def admin_update_order(order_id: str, body: UpdateOrderStatusRequest):
         raise HTTPException(status_code=500, detail="Update failed")
 
 @app.post("/admin/send-notification")
-def admin_send_notification(body: SendNotificationRequest):
+@limiter.limit("10/minute")
+async def admin_send_notification(request: Request, body: SendNotificationRequest):
     """Sends a notification to a specific user or all users (Admin Only)."""
+    require_admin_secret(request)
     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
@@ -608,8 +577,10 @@ def admin_send_notification(body: SendNotificationRequest):
         raise HTTPException(status_code=500, detail="Notification failed")
 
 @app.patch("/admin/users/{uid}/block")
-def admin_block_user(uid: str, blocked: bool):
+@limiter.limit("10/minute")
+async def admin_block_user(request: Request, uid: str, blocked: bool):
     """Blocks or unblocks a user (Admin Only)."""
+    require_admin_secret(request)
     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
@@ -622,15 +593,67 @@ def admin_block_user(uid: str, blocked: bool):
         logger.error(f"User block failed: {e}")
         raise HTTPException(status_code=500, detail="Block failed")
 
+@app.post("/admin/tickets/{ticket_id}/reply")
+@limiter.limit("10/minute")
+async def admin_reply_ticket(request: Request, ticket_id: str, body: AdminReplyRequest):
+    """Reply to a support ticket, mark it resolved, and notify the user."""
+    require_admin_secret(request)
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        ticket_ref = db.collection("tickets").document(ticket_id)
+        ticket = ticket_ref.get()
+        if not ticket.exists:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+
+        ticket_data = ticket.to_dict() or {}
+        update_data = {
+            "adminReply": body.reply,
+            "status": "resolved",
+            "resolvedAt": firestore.SERVER_TIMESTAMP,
+        }
+        ticket_ref.update(update_data)
+
+        uid = ticket_data.get("uid")
+        if uid:
+            db.collection("users").document(uid).collection("tickets").document(ticket_id).set(update_data, merge=True)
+            db.collection("users").document(uid).collection("notifications").add({
+                "title": "Support Ticket Updated",
+                "message": body.reply,
+                "type": "support",
+                "createdAt": firestore.SERVER_TIMESTAMP,
+                "read": False,
+            })
+
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ticket reply failed: {e}")
+        raise HTTPException(status_code=500, detail="Ticket reply failed")
+
 
 # 12. Health Routes
 @app.get("/")
-def health():
+async def health():
     return {"status": "Support Bot Backend Running"}
 
 @app.get("/uptime")
-def uptime_check():
+async def uptime_check():
     return "OK"
+
+@app.get("/ai/status")
+async def ai_status():
+    """Interview-friendly AI system status endpoint."""
+    return {
+        "status": "ready",
+        "model": CHAT_MODEL,
+        "knowledge_base_loaded": bool(KNOWLEDGE_BASE),
+        "retrieval": "semantic ChromaDB RAG with graceful keyword fallback artifacts",
+        "tool_calling": [tool["name"] for tool in list_mcp_tools()],
+        "rate_limit": "20/minute on chat and order completion; 10/minute on admin routes",
+    }
 
 @app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
 async def health_check():

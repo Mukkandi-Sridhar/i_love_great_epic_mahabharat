@@ -33,8 +33,8 @@ const ProfileDetails = () => {
             // Don't overwrite email from auth usually, but if needed:
             // if (profile.email) setEmail(profile.email);
           }
-        } catch (e) {
-          console.error("Failed to load profile", e);
+        } catch {
+          toast({ title: "Profile unavailable", description: "Could not load saved profile details.", variant: "destructive" });
         }
       }
     };

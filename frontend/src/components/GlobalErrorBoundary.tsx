@@ -21,8 +21,8 @@ class GlobalErrorBoundary extends Component<Props, State> {
         return { hasError: true, error };
     }
 
-    public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error("Uncaught error:", error, errorInfo);
+    public componentDidCatch(_error: Error, _errorInfo: ErrorInfo) {
+        // Error boundary intentionally keeps user-facing recovery friendly.
     }
 
     public render() {
@@ -32,7 +32,7 @@ class GlobalErrorBoundary extends Component<Props, State> {
                     <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-6">
                         <AlertTriangle className="w-8 h-8 text-destructive" />
                     </div>
-                    <h1 className="text-2xl font-serif font-bold mb-2">Something went wrong</h1>
+                    <h1 className="text-2xl font-serif font-bold mb-2">Something went wrong. Please refresh.</h1>
                     <p className="text-muted-foreground mb-6 max-w-md">
                         We apologize for the inconvenience. The application encountered an unexpected error.
                     </p>

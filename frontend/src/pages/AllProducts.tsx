@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import { fetchOwnedProductIds } from "@/services/db";
 import { log } from "@/services/logger";
-import { ebooks, sdCards } from "@/data/products";
+import { ebooks, pendrives } from "@/data/products";
+import { SkeletonCard } from "@/components/SkeletonCard";
 
 const AllProducts = () => {
   const { user } = useFirebase();
@@ -18,19 +19,21 @@ const AllProducts = () => {
 
   const [filterPrice, setFilterPrice] = useState<string>("all");
   const [filterRating, setFilterRating] = useState<string>("all");
+  const [loading, setLoading] = useState(true);
 
 
 
   // Determine which products to show based on type parameter
   const getProducts = () => {
     if (typeParam === "ebooks") return ebooks;
-    if (typeParam === "sdcards") return sdCards;
+    if (typeParam === "sdcards" || typeParam === "pendrives") return pendrives;
     return [];
   };
 
   const [products, setProducts] = useState(getProducts());
 
   useEffect(() => {
+    setLoading(true);
     let filtered = getProducts();
 
     // Apply price filter
@@ -51,6 +54,8 @@ const AllProducts = () => {
     }
 
     setProducts(filtered);
+    const timer = window.setTimeout(() => setLoading(false), 150);
+    return () => window.clearTimeout(timer);
   }, [filterPrice, filterRating, typeParam]);
 
   useEffect(() => {
@@ -68,7 +73,7 @@ const AllProducts = () => {
 
   const getTitle = () => {
     if (typeParam === "ebooks") return "All Ebooks";
-    if (typeParam === "sdcards") return "All SD Cards";
+    if (typeParam === "sdcards" || typeParam === "pendrives") return "All Pendrives";
     return "All Products";
   };
 
@@ -133,14 +138,14 @@ const AllProducts = () => {
                 )}
               </button>
               <button
-                onClick={() => setSearchParams({ type: "sdcards" })}
-                className={`relative z-10 flex-1 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-300 ${typeParam === "sdcards"
+                onClick={() => setSearchParams({ type: "pendrives" })}
+                className={`relative z-10 flex-1 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-300 ${typeParam === "sdcards" || typeParam === "pendrives"
                   ? "text-black"
                   : "text-gray-400 hover:text-white"
                   }`}
               >
-                SD Cards
-                {typeParam === "sdcards" && (
+                Pendrives
+                {(typeParam === "sdcards" || typeParam === "pendrives") && (
                   <motion.div
                     layoutId="activeTab"
                     className="absolute inset-0 bg-primary rounded-full -z-10 shadow-[0_0_15px_rgba(255,215,0,0.3)]"
@@ -194,7 +199,13 @@ const AllProducts = () => {
       <main className="w-full max-w-[1400px] mx-auto px-4 pt-6 pb-32">
         {/* Products Grid - Optimized for Mobile */}
         <section className="animate-fade-in">
-          {products.length > 0 ? (
+          {loading ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <SkeletonCard key={index} />
+              ))}
+            </div>
+          ) : products.length > 0 ? (
             <motion.div
               layout
               className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6"

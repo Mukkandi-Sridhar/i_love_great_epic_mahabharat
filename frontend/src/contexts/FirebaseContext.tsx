@@ -45,8 +45,8 @@ const saveUserProfile = async (user: User) => {
       await setDoc(userRef, userData, { merge: true });
     }
 
-  } catch (err) {
-    console.error('Failed to save user profile:', err);
+  } catch {
+    // Profile persistence should not block authentication.
   }
 };
 
@@ -63,7 +63,6 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
       await saveUserProfile(result.user);
       toast({ title: "Welcome!", description: `Signed in as ${result.user.displayName || result.user.email}` });
     } catch (error: any) {
-      console.error("Google Sign In Error:", error);
       toast({
         title: "Login Failed",
         description: error.message || "Could not sign in with Google.",
@@ -76,8 +75,8 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     try {
       await signOut(auth);
       toast({ title: "Signed out", description: "See you soon!" });
-    } catch (error) {
-      console.error("Logout Error:", error);
+    } catch {
+      toast({ title: "Logout failed", description: "Please try again.", variant: "destructive" });
     }
   };
 

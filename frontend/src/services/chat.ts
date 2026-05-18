@@ -1,5 +1,5 @@
 
-const API_URL = "https://ilgem-backend-y0m3.onrender.com";
+import { BACKEND_URL, jsonHeaders } from "@/services/api";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -7,40 +7,49 @@ export interface ChatMessage {
   timestamp?: number;
 }
 
+export interface ChatMetadata {
+  model?: string;
+  retrievedKnowledge?: number;
+  toolsAvailable?: number;
+  cached?: boolean;
+  toolCalled?: string | null;
+}
+
 export interface ChatRequestPayload {
-  messages: { role: string; content: string }[];
+  message: string;
   email: string;
   name?: string;
-  uid?: string;
+  uid: string;
+  session_id?: string;
+}
+
+export interface ChatResponse {
+  response: string;
+  session_id?: string;
+  metadata?: ChatMetadata;
 }
 
 export const chatService = {
-  async sendMessage(payload: ChatRequestPayload): Promise<string> {
+  async sendMessage(payload: ChatRequestPayload): Promise<ChatResponse> {
     try {
-      console.log("Sending message to:", `${API_URL}/chat`);
-      const response = await fetch(`${API_URL}/chat`, {
+      const response = await fetch(`${BACKEND_URL}/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: jsonHeaders(),
         body: JSON.stringify(payload),
       });
-
-      console.log("Response status:", response.status);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Backend Error:", response.status, response.statusText, errorText);
         throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
-      return data.response || data.message || "No response from server";
+      return {
+        response: data.response || data.message || "No response from server",
+        session_id: data.session_id,
+        metadata: data.metadata,
+      };
     } catch (error) {
-      console.error("Chat Service Error:", error);
-      if (error instanceof TypeError && error.message === "Failed to fetch") {
-        console.error("Possible CORS issue or server is unreachable.");
-      }
       throw error;
     }
   }

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, LogOut, Mic, MicOff } from 'lucide-react';
-import { chatService, ChatMessage } from '@/services/chat';
+import { Send, LogOut, Mic, Database, Workflow, Cpu, ShieldCheck } from 'lucide-react';
+import { chatService, ChatMessage, ChatMetadata } from '@/services/chat';
 import { cn } from '@/lib/utils';
 import logo from '@/assets/logo.png';
 import { useFirebase } from '@/contexts/FirebaseContext';
@@ -46,6 +46,11 @@ export const ChatInterface = () => {
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [lastTrace, setLastTrace] = useState<ChatMetadata | null>(null);
+    const [sessionId, setSessionId] = useState(() =>
+        window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    const [showQuickQuestions, setShowQuickQuestions] = useState(true);
 
     // Voice State
     const [isListening, setIsListening] = useState(false);
@@ -72,12 +77,6 @@ export const ChatInterface = () => {
     }, []);
 
 
-    // Debugging: Log user state changes
-    useEffect(() => {
-        console.log("ChatInterface - Current User:", user);
-        console.log("ChatInterface - Computed Name:", userName);
-    }, [user, userName]);
-
     // Update greeting when user logs in
     useEffect(() => {
         if (user && messages.length === 1 && messages[0].role === 'assistant') {
@@ -98,7 +97,6 @@ export const ChatInterface = () => {
 
         // Auto-stop after 5 seconds of silence (increased for better UX)
         silenceTimerRef.current = setTimeout(() => {
-            console.log("Silence detected, stopping...");
             stopListening();
         }, 5000);
     };
@@ -125,7 +123,6 @@ export const ChatInterface = () => {
             setIsListening(true);
             setIsProcessing(false);
             resetSilenceTimer();
-            console.log("Speech recognition started");
         };
 
         recognition.onsoundstart = () => {
@@ -135,18 +132,15 @@ export const ChatInterface = () => {
         recognition.onspeechend = () => {
             // In continuous mode, this might not trigger until fully stopped.
             // We rely on silence timer for auto-stop.
-            console.log("Speech ended event");
         };
 
         recognition.onend = () => {
             setIsListening(false);
             setIsProcessing(false);
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-            console.log("Speech recognition ended");
         };
 
         recognition.onerror = (event: any) => {
-            console.error("Speech recognition error", event.error);
             setIsListening(false);
             setIsProcessing(false);
         };
@@ -200,16 +194,17 @@ export const ChatInterface = () => {
     };
     // ---------------------------
 
-    const handleSend = async (e?: React.FormEvent) => {
-        e?.preventDefault();
-        if (!input.trim() || isLoading) return;
+    const sendMessage = async (content: string) => {
+        const trimmed = content.trim();
+        if (!trimmed || isLoading) return;
 
         // Stop listening if sending
         stopListening();
+        setShowQuickQuestions(false);
 
         const userMessage: ChatMessage = {
             role: 'user',
-            content: input.trim(),
+            content: trimmed,
             timestamp: Date.now()
         };
 
@@ -219,32 +214,30 @@ export const ChatInterface = () => {
         setIsLoading(true);
 
         try {
-            // Format messages for backend
-            const apiMessages = newMessages.map(msg => ({
-                role: msg.role,
-                content: msg.content
-            }));
-
-            console.log("Sending payload with name:", userName);
-
-            const response = await chatService.sendMessage({
-                messages: apiMessages,
+            const chatResponse = await chatService.sendMessage({
+                message: userMessage.content,
                 email: userEmail,
                 name: userName,
-                uid: user?.uid
+                uid: user?.uid || "",
+                session_id: sessionId,
             });
+            if (chatResponse.session_id && chatResponse.session_id !== sessionId) {
+                setSessionId(chatResponse.session_id);
+            }
+            setLastTrace(chatResponse.metadata ?? null);
 
             const botMessage: ChatMessage = {
                 role: 'assistant',
-                content: response,
+                content: chatResponse.response,
                 timestamp: Date.now()
             };
 
             setMessages(prev => [...prev, botMessage]);
         } catch (error) {
+            setLastTrace(null);
             const errorMessage: ChatMessage = {
                 role: 'assistant',
-                content: "I apologize, but I'm having trouble connecting to the divine knowledge base right now. Please try again later.",
+                content: "Sorry, I'm having trouble connecting. Please try again.",
                 timestamp: Date.now()
             };
             setMessages(prev => [...prev, errorMessage]);
@@ -252,6 +245,36 @@ export const ChatInterface = () => {
             setIsLoading(false);
         }
     };
+
+    const handleSend = async (e?: React.FormEvent) => {
+        e?.preventDefault();
+        await sendMessage(input);
+    };
+
+    const quickQuestions = ["Where is my order?", "Product info", "Refund policy"];
+
+    const traceItems = [
+        {
+            icon: Database,
+            label: "RAG",
+            value: lastTrace ? `${lastTrace.retrievedKnowledge ?? 0} sources` : "ready",
+        },
+        {
+            icon: Workflow,
+            label: "Tools",
+            value: lastTrace?.toolCalled || `${lastTrace?.toolsAvailable ?? 1} live`,
+        },
+        {
+            icon: Cpu,
+            label: "Model",
+            value: lastTrace?.model || "gpt-4o-mini",
+        },
+        {
+            icon: ShieldCheck,
+            label: "Cache",
+            value: lastTrace?.cached ? "hit" : "fresh",
+        },
+    ];
 
     return (
         <div className="flex flex-col w-full h-full md:max-h-[700px] max-w-3xl mx-auto bg-black/60 backdrop-blur-2xl md:rounded-2xl border-y md:border border-white/10 overflow-hidden shadow-2xl relative">
@@ -284,6 +307,18 @@ export const ChatInterface = () => {
                         </button>
                     </div>
                 )}
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-4 py-3 border-b border-white/5 bg-black/25">
+                {traceItems.map(({ icon: Icon, label, value }) => (
+                    <div key={label} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 min-w-0">
+                        <Icon className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <div className="min-w-0 leading-tight">
+                            <div className="text-[9px] uppercase tracking-widest text-gray-500">{label}</div>
+                            <div className="text-[11px] text-white truncate">{value}</div>
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {/* Messages Area - Polished Flow */}
@@ -339,6 +374,26 @@ export const ChatInterface = () => {
                         );
                     })}
                 </AnimatePresence>
+
+                {showQuickQuestions && messages.length === 1 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="ml-14 flex flex-wrap gap-2"
+                    >
+                        {quickQuestions.map((question) => (
+                            <button
+                                key={question}
+                                type="button"
+                                onClick={() => sendMessage(question)}
+                                disabled={isLoading}
+                                className="rounded-full border border-primary/20 bg-primary/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-primary hover:bg-primary/20 disabled:opacity-50"
+                            >
+                                {question}
+                            </button>
+                        ))}
+                    </motion.div>
+                )}
 
                 {isLoading && (
                     <motion.div

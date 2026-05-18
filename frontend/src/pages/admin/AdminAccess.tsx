@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Key, Search, ShieldCheck, ShieldAlert, Package, Trash2 } from "lucide-react";
+import { BACKEND_URL, adminHeaders } from "@/services/api";
 
 interface UserProfile {
     uid: string;
@@ -41,7 +42,7 @@ const AdminAccess = () => {
                 loadPurchases(userData.uid);
             }
         } catch (e) {
-            console.error(e);
+            toast({ title: "Search failed", variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -55,9 +56,9 @@ const AdminAccess = () => {
     const grantAccess = async (productId: string, type: string, title: string) => {
         if (!targetUser) return;
         try {
-            const res = await fetch("http://localhost:8000/admin/grant-access", {
+            const res = await fetch(`${BACKEND_URL}/admin/grant-access`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: adminHeaders(),
                 body: JSON.stringify({
                     uid: targetUser.uid,
                     email: targetUser.email,
@@ -71,23 +72,23 @@ const AdminAccess = () => {
                 toast({ title: "Access Granted" });
                 loadPurchases(targetUser.uid);
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { toast({ title: "Grant failed", variant: "destructive" }); }
     };
 
     const revokeAccess = async (productId: string) => {
         if (!targetUser) return;
         if (!confirm("Revoke access to this product?")) return;
         try {
-            const res = await fetch("http://localhost:8000/admin/revoke-access", {
+            const res = await fetch(`${BACKEND_URL}/admin/revoke-access`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: adminHeaders(),
                 body: JSON.stringify({ uid: targetUser.uid, product_id: productId })
             });
             if (res.ok) {
                 toast({ title: "Access Revoked" });
                 loadPurchases(targetUser.uid);
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { toast({ title: "Revoke failed", variant: "destructive" }); }
     };
 
     return (
@@ -145,8 +146,8 @@ const AdminAccess = () => {
                                 <Button onClick={() => grantAccess("ebook-1", "ebook", "Full Mahabharat Ebook")} variant="outline" className="w-full justify-start gap-2 border-white/10 bg-white/5">
                                     <Package className="w-4 h-4" /> Grant Mahabharat Ebook
                                 </Button>
-                                <Button onClick={() => grantAccess("sdcard-1", "sdcard", "128GB SD Card Contents")} variant="outline" className="w-full justify-start gap-2 border-white/10 bg-white/5">
-                                    <Package className="w-4 h-4" /> Grant SD Card Access
+                                <Button onClick={() => grantAccess("pd-1", "pendrive", "Sri Mahabharatam Telugu Complete")} variant="outline" className="w-full justify-start gap-2 border-white/10 bg-white/5">
+                                    <Package className="w-4 h-4" /> Grant Pendrive Access
                                 </Button>
                             </CardContent>
                         </Card>
