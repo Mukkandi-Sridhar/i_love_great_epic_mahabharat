@@ -25,7 +25,7 @@ export interface Product {
     isPhysical?: boolean;
 }
 
-export const ebooks: Product[] = [
+const fallbackEbooks: Product[] = [
     {
         id: "ebook-1",
         image: product1,
@@ -74,7 +74,7 @@ export const ebooks: Product[] = [
     },
 ];
 
-export const pendrives: Product[] = [
+const fallbackPendrives: Product[] = [
     {
         id: "pd-1",
         image: pendrive1,
@@ -169,4 +169,6 @@ export const pendrives: Product[] = [
     },
 ];
 
-export const allProducts = [...ebooks, ...pendrives];
+// Used as fallback if Firestore products collection is empty.
+export const FALLBACK_PRODUCTS: Product[] = [...fallbackEbooks, ...fallbackPendrives];
+export const allProducts = FALLBACK_PRODUCTS;

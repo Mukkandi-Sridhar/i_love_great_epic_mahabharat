@@ -50,7 +50,7 @@ USER CONTEXT (loaded before conversation):
 AVAILABLE TOOLS:
 - get_order_status: check real order data from database
 - get_user_purchases: see what user has bought
-- verify_payment: verify a sandbox transaction/payment ID from the order system
+- verify_payment: verify a transaction/payment ID from the order system
 - create_refund_request: raise refund for physical products
 - create_support_ticket: log any unresolved issue
 - check_coupon: validate a coupon code

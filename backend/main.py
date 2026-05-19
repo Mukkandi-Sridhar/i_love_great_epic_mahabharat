@@ -1,14 +1,17 @@
 import os
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import firestore
 from pydantic import BaseModel
@@ -23,6 +26,7 @@ load_dotenv(os.path.join(Path(__file__).resolve().parent, ".env"))
 
 from backend.api.chat import router as chat_router
 from backend.api.webhook import router as webhook_router
+from backend.core.auth import require_admin
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
 from backend.core.rate_limit import limiter
@@ -98,6 +102,14 @@ class CompleteOrderRequest(BaseModel):
     payment_ref: Optional[str] = None
     test_payment: bool = False
     transaction_details: Optional[dict] = None
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
+    razorpay_signature: Optional[str] = None
+
+
+class CreateRazorpayOrderRequest(BaseModel):
+    uid: str
+    amount: float
 
 
 class ValidateCouponRequest(BaseModel):
@@ -135,11 +147,60 @@ class AdminReplyRequest(BaseModel):
     reply: str
 
 
-def require_admin_secret(request: Request) -> None:
-    """Require the configured admin secret for every admin backend route."""
-    provided = request.headers.get("X-Admin-Secret", "")
-    if not settings.admin_secret or provided != settings.admin_secret:
-        raise HTTPException(status_code=401, detail="Invalid admin secret")
+def _verify_razorpay_signature(
+    razorpay_order_id: str | None,
+    razorpay_payment_id: str | None,
+    razorpay_signature: str | None,
+) -> None:
+    """Verify Razorpay checkout signature before granting access."""
+    if not settings.razorpay_key_secret:
+        raise HTTPException(status_code=503, detail="Payment verification unavailable")
+    if not razorpay_order_id or not razorpay_payment_id or not razorpay_signature:
+        raise HTTPException(status_code=403, detail="Missing payment signature")
+
+    expected = hmac.new(
+        settings.razorpay_key_secret.encode("utf-8"),
+        f"{razorpay_order_id}|{razorpay_payment_id}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected, razorpay_signature):
+        raise HTTPException(status_code=403, detail="Invalid payment signature")
+
+
+@app.post("/create-razorpay-order")
+@limiter.limit("20/minute")
+async def create_razorpay_order(request: Request, body: CreateRazorpayOrderRequest):
+    """Create a Razorpay order server-side."""
+    if not settings.razorpay_key_id or not settings.razorpay_key_secret:
+        raise HTTPException(status_code=503, detail="Payment gateway is not configured")
+    if body.amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid amount")
+
+    def _create() -> dict:
+        import razorpay
+
+        client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
+        order = client.order.create(
+            {
+                "amount": int(round(body.amount * 100)),
+                "currency": "INR",
+                "receipt": f"order_{body.uid[:8]}_{int(time.time())}",
+            }
+        )
+        return {
+            "order_id": order["id"],
+            "amount": body.amount,
+            "currency": "INR",
+            "key": settings.razorpay_key_id,
+        }
+
+    try:
+        return await asyncio.to_thread(_create)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Razorpay order creation failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not create payment order")
 
 
 @app.post("/complete-order")
@@ -149,6 +210,9 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
+    request_host = request.client.host if request.client else ""
+    is_local_request = request_host in {"127.0.0.1", "::1", "localhost"}
+
     def _write_order() -> dict:
         base_price = body.base_price
         final_amount = base_price
@@ -156,43 +220,69 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         product_type = body.product_type.lower()
         product_title = body.product_title or f"{product_type.title()} - {body.product_id}"
         transaction_details = body.transaction_details or {}
+        razorpay_order_id = body.razorpay_order_id or transaction_details.get("razorpay_order_id")
+        razorpay_payment_id = body.razorpay_payment_id or transaction_details.get("razorpay_payment_id")
+        razorpay_signature = body.razorpay_signature or transaction_details.get("razorpay_signature")
+
+        allow_test_payment = body.test_payment and (
+            settings.is_dev or settings.allow_payment_bypass or is_local_request
+        )
+        if not allow_test_payment:
+            _verify_razorpay_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
+
         transaction_id = (
             transaction_details.get("transaction_id")
             or transaction_details.get("gateway_payment_id")
+            or razorpay_payment_id
             or body.payment_ref
         )
         if not transaction_id:
-            transaction_id = f"txn_sandbox_{db.collection('transactions_index').document().id}"
+            transaction_id = f"txn_test_{db.collection('transactions_index').document().id}"
         transaction_details = {
             "transaction_id": transaction_id,
-            "gateway": body.payment_mode or "fake_sandbox",
+            "gateway": body.payment_mode or "test_checkout",
             "status": "captured" if body.test_payment else "paid",
             "currency": "INR",
+            "razorpay_order_id": razorpay_order_id,
+            "razorpay_payment_id": razorpay_payment_id,
+            "razorpay_signature": razorpay_signature,
             **transaction_details,
         }
 
+        product_ref = None
+        product_snap = None
+        if product_type in {"pendrive", "sdcard"}:
+            product_ref = db.collection("products").document(body.product_id)
+            product_snap = product_ref.get()
+            if product_snap.exists:
+                stock = (product_snap.to_dict() or {}).get("stockCount", 999)
+                if stock <= 0:
+                    raise HTTPException(status_code=400, detail="Product is out of stock")
+
         if body.coupon_code:
             coupon_ref = db.collection("coupons").document(body.coupon_code.upper())
-            coupon = coupon_ref.get()
-            if coupon.exists:
-                coupon_data = coupon.to_dict() or {}
-                valid = coupon_data.get("enabled", True)
-                expires_at = coupon_data.get("expiresAt")
-                max_uses = coupon_data.get("maxUses")
-                used_count = coupon_data.get("usedCount", 0)
 
-                if valid and expires_at and expires_at.timestamp() < __import__("time").time():
-                    valid = False
-                if valid and max_uses and used_count >= max_uses:
-                    valid = False
+            @firestore.transactional
+            def _apply_coupon(transaction, ref, price):
+                snap = ref.get(transaction=transaction)
+                if not snap.exists:
+                    return 0
+                data = snap.to_dict() or {}
+                if not data.get("enabled", True):
+                    return 0
+                expires_at = data.get("expiresAt")
+                if expires_at and expires_at.timestamp() < time.time():
+                    return 0
+                max_uses = data.get("maxUses")
+                used_count = data.get("usedCount", 0)
+                if max_uses and used_count >= max_uses:
+                    return 0
+                discount = (price * data["value"]) / 100 if data["type"] == "percent" else data["value"]
+                transaction.update(ref, {"usedCount": firestore.Increment(1)})
+                return discount
 
-                if valid:
-                    if coupon_data["type"] == "percent":
-                        discount_value = (base_price * coupon_data["value"]) / 100
-                    else:
-                        discount_value = coupon_data["value"]
-                    final_amount = max(0, base_price - discount_value)
-                    coupon_ref.update({"usedCount": firestore.Increment(1)})
+            discount_value = _apply_coupon(db.transaction(), coupon_ref, base_price)
+            final_amount = max(0, base_price - discount_value)
 
         order_data = {
             "uid": body.uid,
@@ -269,6 +359,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         if transaction_id:
             batch.set(db.collection("users").document(body.uid).collection("transactions").document(transaction_id), transaction_data)
             batch.set(db.collection("transactions_index").document(transaction_id), transaction_data)
+        if product_ref is not None and product_snap is not None and product_snap.exists:
+            batch.update(product_ref, {"stockCount": firestore.Increment(-1)})
         batch.commit()
         return {
             "status": "success",
@@ -279,6 +371,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
 
     try:
         return await asyncio.to_thread(_write_order)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("Order completion failed: %s", exc)
         raise HTTPException(status_code=500, detail="Could not complete order")
@@ -334,9 +428,8 @@ async def validate_coupon(body: ValidateCouponRequest):
 
 @app.post("/admin/grant-access")
 @limiter.limit("10/minute")
-async def admin_grant_access(request: Request, body: GrantAccessRequest):
+async def admin_grant_access(request: Request, body: GrantAccessRequest, admin_uid: str = Depends(require_admin)):
     """Manually grant product access to a user."""
-    require_admin_secret(request)
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -376,9 +469,8 @@ async def admin_grant_access(request: Request, body: GrantAccessRequest):
 
 @app.post("/admin/revoke-access")
 @limiter.limit("10/minute")
-async def admin_revoke_access(request: Request, body: RevokeAccessRequest):
+async def admin_revoke_access(request: Request, body: RevokeAccessRequest, admin_uid: str = Depends(require_admin)):
     """Manually revoke product access from a user."""
-    require_admin_secret(request)
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -395,9 +487,13 @@ async def admin_revoke_access(request: Request, body: RevokeAccessRequest):
 
 @app.patch("/admin/orders/{order_id}")
 @limiter.limit("10/minute")
-async def admin_update_order(request: Request, order_id: str, body: UpdateOrderStatusRequest):
+async def admin_update_order(
+    request: Request,
+    order_id: str,
+    body: UpdateOrderStatusRequest,
+    admin_uid: str = Depends(require_admin),
+):
     """Update order status and tracking information."""
-    require_admin_secret(request)
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -423,9 +519,12 @@ async def admin_update_order(request: Request, order_id: str, body: UpdateOrderS
 
 @app.post("/admin/send-notification")
 @limiter.limit("10/minute")
-async def admin_send_notification(request: Request, body: SendNotificationRequest):
+async def admin_send_notification(
+    request: Request,
+    body: SendNotificationRequest,
+    admin_uid: str = Depends(require_admin),
+):
     """Send a notification to one user or broadcast to all users."""
-    require_admin_secret(request)
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -455,9 +554,8 @@ async def admin_send_notification(request: Request, body: SendNotificationReques
 
 @app.patch("/admin/users/{uid}/block")
 @limiter.limit("10/minute")
-async def admin_block_user(request: Request, uid: str, blocked: bool):
+async def admin_block_user(request: Request, uid: str, blocked: bool, admin_uid: str = Depends(require_admin)):
     """Block or unblock a user."""
-    require_admin_secret(request)
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -479,9 +577,13 @@ async def admin_block_user(request: Request, uid: str, blocked: bool):
 
 @app.post("/admin/tickets/{ticket_id}/reply")
 @limiter.limit("10/minute")
-async def admin_reply_ticket(request: Request, ticket_id: str, body: AdminReplyRequest):
+async def admin_reply_ticket(
+    request: Request,
+    ticket_id: str,
+    body: AdminReplyRequest,
+    admin_uid: str = Depends(require_admin),
+):
     """Reply to a support ticket, mark it resolved, and notify the user."""
-    require_admin_secret(request)
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 

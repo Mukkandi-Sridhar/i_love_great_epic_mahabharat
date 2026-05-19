@@ -13,6 +13,7 @@ export interface ChatRequestPayload {
   name?: string;
   uid: string;
   session_id?: string;
+  messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
 }
 
 export interface ChatResponse {

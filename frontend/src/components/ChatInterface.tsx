@@ -5,6 +5,8 @@ import { chatService, ChatMessage } from "@/services/chat";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
 import { useFirebase } from "@/contexts/FirebaseContext";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 
 interface SpeechRecognition extends EventTarget {
     continuous: boolean;
@@ -56,9 +58,7 @@ export const ChatInterface = () => {
     ]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [sessionId, setSessionId] = useState(() =>
-        window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    );
+    const [sessionId, setSessionId] = useState(() => window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const [showQuickQuestions, setShowQuickQuestions] = useState(true);
     const [agentStatus, setAgentStatus] = useState<string | null>(null);
     const [activeTools, setActiveTools] = useState<string[]>([]);
@@ -101,6 +101,77 @@ export const ChatInterface = () => {
             ]);
             greetingSet.current = true;
         }
+    }, [user]);
+
+    useEffect(() => {
+        if (!user) {
+            setMessages([
+                {
+                    role: "assistant",
+                    content: "Namaste! How can I help you today?",
+                    timestamp: Date.now(),
+                },
+            ]);
+            setShowQuickQuestions(true);
+            return;
+        }
+
+        let cancelled = false;
+        const storageKey = `dharma_chat_session_${user.uid}`;
+        const existingSession = localStorage.getItem(storageKey);
+        const nextSession = existingSession || `${user.uid}_${Date.now()}`;
+        if (!existingSession) localStorage.setItem(storageKey, nextSession);
+        setSessionId(nextSession);
+
+        const loadPersistedMessages = async () => {
+            try {
+                const messagesQuery = query(
+                    collection(db, "users", user.uid, "chat_sessions", nextSession, "messages"),
+                    orderBy("timestamp", "desc"),
+                    limit(20)
+                );
+                const snap = await getDocs(messagesQuery);
+                if (cancelled) return;
+
+                const persisted = snap.docs
+                    .reverse()
+                    .map((doc) => {
+                        const data = doc.data();
+                        return {
+                            role: data.role as ChatMessage["role"],
+                            content: data.content as string,
+                            timestamp: data.timestamp?.toMillis?.() || Date.now(),
+                        };
+                    })
+                    .filter((item) => (item.role === "user" || item.role === "assistant") && item.content);
+
+                if (persisted.length > 0) {
+                    setMessages(persisted);
+                    setShowQuickQuestions(false);
+                    greetingSet.current = true;
+                } else {
+                    const firstName = (user.displayName || user.email?.split("@")[0] || "").split(" ")[0];
+                    setMessages([
+                        {
+                            role: "assistant",
+                            content: firstName ? `Namaste ${firstName}! How can I assist you today?` : "Namaste! How can I help you today?",
+                            timestamp: Date.now(),
+                        },
+                    ]);
+                    setShowQuickQuestions(true);
+                    greetingSet.current = true;
+                }
+            } catch {
+                if (!cancelled) {
+                    setShowQuickQuestions(true);
+                }
+            }
+        };
+
+        loadPersistedMessages();
+        return () => {
+            cancelled = true;
+        };
     }, [user]);
 
     const resetSilenceTimer = () => {
@@ -193,6 +264,10 @@ export const ChatInterface = () => {
                     name: userName,
                     uid: user?.uid || "",
                     session_id: sessionId,
+                    messages: [...messages, userMessage].slice(-20).map((item) => ({
+                        role: item.role,
+                        content: item.content,
+                    })),
                 },
                 (event) => {
                     switch (event.type) {
@@ -215,6 +290,9 @@ export const ChatInterface = () => {
                         case "done":
                             if (event.session_id && event.session_id !== sessionId) {
                                 setSessionId(event.session_id);
+                                if (user?.uid) {
+                                    localStorage.setItem(`dharma_chat_session_${user.uid}`, event.session_id);
+                                }
                             }
                             if (!handledError) {
                                 setMessages((prev) => [

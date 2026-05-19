@@ -80,7 +80,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "verify_payment",
-            "description": "Verify a sandbox transaction by transaction/payment ID.",
+            "description": "Verify a stored transaction by transaction/payment ID.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -248,7 +248,7 @@ async def _get_user_purchases(uid: str) -> dict:
 
 
 async def _verify_payment(transaction_id: str) -> dict:
-    """Verify a fake sandbox transaction from Firestore."""
+    """Verify a stored checkout transaction from Firestore."""
     transaction_id = (transaction_id or "").strip()
     if not transaction_id:
         return {"error": "Please share a transaction ID."}
@@ -276,7 +276,7 @@ async def _verify_payment(transaction_id: str) -> dict:
             "amount_inr": data.get("amount", 0),
             "currency": data.get("currency", "INR"),
             "method": data.get("method", ""),
-            "gateway": data.get("gateway", "fake_sandbox"),
+            "gateway": data.get("gateway", "razorpay"),
             "captured": data.get("status") in {"captured", "paid", "success"},
             "test_payment": data.get("testPayment", True),
             "created_at": paid_at,

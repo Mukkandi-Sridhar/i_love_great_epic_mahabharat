@@ -43,7 +43,7 @@ const AdminUsers = () => {
         try {
             const res = await fetch(`${BACKEND_URL}/admin/users/${uid}/block?blocked=${!currentBlocked}`, {
                 method: "PATCH",
-                headers: adminHeaders(),
+                headers: await adminHeaders(),
             });
             if (res.ok) {
                 toast({

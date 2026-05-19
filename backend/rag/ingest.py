@@ -11,6 +11,7 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from backend.core.config import settings
+from backend.core.firebase import get_firestore_client
 
 
 logger = logging.getLogger("ChatbotBackend.rag.ingest")
@@ -19,7 +20,7 @@ PRODUCT_COLLECTION = "mahabharat_products"
 _chroma_client: Any | None = None
 
 
-PRODUCT_CATALOG = [
+FALLBACK_PRODUCT_CATALOG = [
     {
         "id": "ebook-1",
         "title": "Vijnana Bhairava Tantra",
@@ -75,6 +76,26 @@ PRODUCT_CATALOG = [
         "highlights": ["32GB Pendrive", "Hindi narration", "Studio quality"],
     },
 ]
+
+
+async def _load_products_from_firestore() -> list[dict]:
+    """Load product documents from Firestore for product RAG ingestion."""
+    db = get_firestore_client()
+    if db is None:
+        return []
+
+    def _read() -> list[dict]:
+        products = []
+        for doc in db.collection("products").stream():
+            data = doc.to_dict() or {}
+            products.append({"id": doc.id, **data})
+        return products
+
+    try:
+        return await asyncio.to_thread(_read)
+    except Exception as exc:
+        logger.warning("Could not load products from Firestore for RAG: %s", exc)
+        return []
 
 
 def _hash_text(text: str) -> str:
@@ -245,7 +266,11 @@ async def ingest_policies() -> None:
 
 def _product_text(product: dict[str, Any]) -> str:
     """Create a searchable text representation of a product."""
-    highlights = ", ".join(product.get("highlights", []))
+    raw_highlights = product.get("highlights", [])
+    highlights = ", ".join(
+        item.get("text", "") if isinstance(item, dict) else str(item)
+        for item in raw_highlights
+    )
     return (
         f"Product ID: {product['id']}\n"
         f"Title: {product['title']}\n"
@@ -258,18 +283,23 @@ def _product_text(product: dict[str, Any]) -> str:
 
 
 async def ingest_products() -> None:
-    """Ingest the static product catalog into the mahabharat_products collection."""
+    """Ingest the Firestore product catalog into the mahabharat_products collection."""
     try:
-        catalog_json = json.dumps(PRODUCT_CATALOG, sort_keys=True)
+        products = await _load_products_from_firestore()
+        if not products:
+            logger.warning("Firestore products collection empty; using fallback product catalog for RAG.")
+            products = FALLBACK_PRODUCT_CATALOG
+
+        catalog_json = json.dumps(products, sort_keys=True)
         source_hash = _hash_text(catalog_json)
-        texts = [_product_text(product) for product in PRODUCT_CATALOG]
+        texts = [_product_text(product) for product in products]
         client = _get_chroma_client()
         if client is None:
             return
 
         collection = client.get_or_create_collection(name=PRODUCT_COLLECTION)
-        if not _collection_needs_refresh(collection, len(PRODUCT_CATALOG), source_hash):
-            logger.info("Product RAG collection already current (%s products).", len(PRODUCT_CATALOG))
+        if not _collection_needs_refresh(collection, len(products), source_hash):
+            logger.info("Product RAG collection already current (%s products).", len(products))
             return
 
         embeddings = await _embed_texts(texts)
@@ -279,7 +309,7 @@ async def ingest_products() -> None:
         collection = await asyncio.to_thread(_reset_collection, client, PRODUCT_COLLECTION)
         await asyncio.to_thread(
             collection.upsert,
-            ids=[f"product-{product['id']}" for product in PRODUCT_CATALOG],
+            ids=[f"product-{product['id']}" for product in products],
             documents=texts,
             embeddings=embeddings,
             metadatas=[
@@ -291,9 +321,9 @@ async def ingest_products() -> None:
                     "title": product["title"],
                     "source_hash": source_hash,
                 }
-                for product in PRODUCT_CATALOG
+                for product in products
             ],
         )
-        logger.info("Product RAG ingestion complete (%s products).", len(PRODUCT_CATALOG))
+        logger.info("Product RAG ingestion complete (%s products).", len(products))
     except Exception as exc:
         logger.warning("Product RAG ingestion failed gracefully: %s", exc)

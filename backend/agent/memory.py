@@ -71,7 +71,28 @@ async def get_history(uid: str, session_id: str, limit: int = 10) -> list[dict]:
         return [{"role": item["role"], "content": item["content"]} for item in turns[-limit:]]
 
     def _read() -> list[dict]:
-        query = (
+        messages_query = (
+            db.collection("users")
+            .document(uid)
+            .collection("chat_sessions")
+            .document(session_id)
+            .collection("messages")
+            .order_by("timestamp", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+        message_docs = list(messages_query.stream())
+        if message_docs:
+            message_docs.reverse()
+            return [
+                {
+                    "role": (doc.to_dict() or {}).get("role", "user"),
+                    "content": (doc.to_dict() or {}).get("content", ""),
+                }
+                for doc in message_docs
+                if (doc.to_dict() or {}).get("content")
+            ]
+
+        turns_query = (
             db.collection("users")
             .document(uid)
             .collection("chat_sessions")
@@ -80,7 +101,7 @@ async def get_history(uid: str, session_id: str, limit: int = 10) -> list[dict]:
             .order_by("timestamp", direction=firestore.Query.DESCENDING)
             .limit(limit)
         )
-        docs = list(query.stream())
+        docs = list(turns_query.stream())
         docs.reverse()
         return [
             {

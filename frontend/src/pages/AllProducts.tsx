@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, SlidersHorizontal, Sparkles, Search } from "lucide-react";
 import { motion } from "framer-motion";
@@ -6,8 +6,8 @@ import ProductCard from "@/components/ProductCard";
 
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { subscribeToOwnedProductIds } from "@/services/db";
-import { ebooks, pendrives } from "@/data/products";
+import { subscribeToOwnedProductIds, subscribeToProducts } from "@/services/db";
+import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { SkeletonCard } from "@/components/SkeletonCard";
 
 const AllProducts = () => {
@@ -19,17 +19,28 @@ const AllProducts = () => {
   const [filterPrice, setFilterPrice] = useState<string>("all");
   const [filterRating, setFilterRating] = useState<string>("all");
   const [loading, setLoading] = useState(true);
+  const [catalog, setCatalog] = useState<Product[]>(FALLBACK_PRODUCTS);
 
 
 
   // Determine which products to show based on type parameter
-  const getProducts = () => {
-    if (typeParam === "ebooks") return ebooks;
-    if (typeParam === "sdcards" || typeParam === "pendrives") return pendrives;
+  const getProducts = useCallback(() => {
+    if (typeParam === "ebooks") return catalog.filter((product) => product.type === "ebook");
+    if (typeParam === "sdcards" || typeParam === "pendrives") {
+      return catalog.filter((product) => product.type === "pendrive" || product.type === "sdcard");
+    }
     return [];
-  };
+  }, [catalog, typeParam]);
 
   const [products, setProducts] = useState(getProducts());
+
+  useEffect(() => {
+    const unsubscribe = subscribeToProducts((items) => {
+      setCatalog(items.length > 0 ? items : FALLBACK_PRODUCTS);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -55,7 +66,7 @@ const AllProducts = () => {
     setProducts(filtered);
     const timer = window.setTimeout(() => setLoading(false), 150);
     return () => window.clearTimeout(timer);
-  }, [filterPrice, filterRating, typeParam]);
+  }, [filterPrice, filterRating, getProducts]);
 
   useEffect(() => {
     if (!user) {

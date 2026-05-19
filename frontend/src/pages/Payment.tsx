@@ -7,7 +7,6 @@ import {
   Lock,
   BadgeCheck,
   Zap,
-  CreditCard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +14,26 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { getUserProfile } from "@/services/db";
-import { completeOrder } from "@/services/payment";
-import { allProducts } from "@/data/products";
+import { getUserProfile, subscribeToProducts } from "@/services/db";
+import { completeOrder, createRazorpayOrder } from "@/services/payment";
+import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { BACKEND_URL } from "@/services/api";
+
+interface RazorpaySuccessResponse {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayCheckout {
+  open: () => void;
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, any>) => RazorpayCheckout;
+  }
+}
 
 const Payment = () => {
   const { id } = useParams();
@@ -27,7 +42,8 @@ const Payment = () => {
   const { toast } = useToast();
   const { user } = useFirebase();
 
-  const product = useMemo(() => allProducts.find(p => p.id === id), [id]);
+  const [catalog, setCatalog] = useState<Product[]>(FALLBACK_PRODUCTS);
+  const product = useMemo(() => catalog.find((item) => item.id === id), [catalog, id]);
 
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState(user?.email || "");
@@ -39,8 +55,6 @@ const Payment = () => {
   const [altPhone, setAltPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingProduct, setLoadingProduct] = useState(true);
-  const [fakeGatewayOpen, setFakeGatewayOpen] = useState(false);
-  const [fakeGatewayProcessing, setFakeGatewayProcessing] = useState(false);
 
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number; type: string } | null>(null);
@@ -50,7 +64,14 @@ const Payment = () => {
   const [finalPrice, setFinalPrice] = useState(0);
 
   useEffect(() => {
-    setLoadingProduct(false);
+    const unsubscribe = subscribeToProducts((products) => {
+      setCatalog(products.length > 0 ? products : FALLBACK_PRODUCTS);
+      setLoadingProduct(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (product) setFinalPrice(product.price);
   }, [product]);
 
@@ -62,16 +83,17 @@ const Payment = () => {
 
   useEffect(() => {
     const load = async () => {
-      if (user) {
-        if (user.email) setEmail(user.email);
-        if (user.displayName) setName(user.displayName);
-        try {
-          const profile = await getUserProfile(user.uid);
-          if (profile) {
-            if (profile.phone) setPhone(profile.phone);
-            if (profile.name) setName(profile.name);
-          }
-        } catch (e) { }
+      if (!user) return;
+      if (user.email) setEmail(user.email);
+      if (user.displayName) setName(user.displayName);
+      try {
+        const profile = await getUserProfile(user.uid);
+        if (profile) {
+          if (profile.phone) setPhone(profile.phone);
+          if (profile.name) setName(profile.name);
+        }
+      } catch {
+        // Profile hydration is optional for checkout.
       }
     };
     load();
@@ -79,7 +101,8 @@ const Payment = () => {
 
   const type = searchParams.get("type");
   const isPhysical = product?.type === "sdcard" || product?.type === "pendrive" || type === "sdcard" || type === "pendrive";
-  const fakePaymentEnabled = true;
+  const isLocalBackend = BACKEND_URL.includes("localhost") || BACKEND_URL.includes("127.0.0.1");
+  const paymentBypassEnabled = import.meta.env.DEV || isLocalBackend || import.meta.env.VITE_ENABLE_PAYMENT_BYPASS === "true";
 
   const missingFields = useMemo(() => {
     const missing: string[] = [];
@@ -104,19 +127,19 @@ const Payment = () => {
       const res = await fetch(`${BACKEND_URL}/validate-coupon`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode, amount: basePrice })
+        body: JSON.stringify({ code: couponCode, amount: basePrice }),
       });
       const data = await res.json();
       if (res.ok && data.valid) {
         setAppliedCoupon({ code: couponCode, discount: data.discount, type: data.type });
         setFinalPrice(data.final_amount);
-        toast({ title: "Applied!", description: `₹${data.discount} discount applied.` });
+        toast({ title: "Applied!", description: `Rs.${data.discount} discount applied.` });
       } else {
         toast({ title: "Invalid Code", variant: "destructive" });
         setAppliedCoupon(null);
         setFinalPrice(basePrice);
       }
-    } catch (e) {
+    } catch {
       toast({ title: "Error", description: "Server unreachable.", variant: "destructive" });
     } finally {
       setValidatingCoupon(false);
@@ -124,8 +147,14 @@ const Payment = () => {
   };
 
   const validateCheckout = () => {
-    if (!user) { navigate("/auth"); return; }
-    if (!product) { navigate("/explore", { replace: true }); return; }
+    if (!user) {
+      navigate("/auth");
+      return false;
+    }
+    if (!product) {
+      navigate("/explore", { replace: true });
+      return false;
+    }
     if (!/^[6-9]\d{9}$/.test(phone)) {
       toast({ title: "Required", description: "Please enter a valid WhatsApp number.", variant: "destructive" });
       return false;
@@ -141,7 +170,12 @@ const Payment = () => {
     return true;
   };
 
-  const submitCompletedOrder = async (payment?: { mode: string; ref: string; test: boolean; transactionDetails?: Record<string, any> }) => {
+  const submitCompletedOrder = async (payment: {
+    mode: string;
+    ref: string;
+    test: boolean;
+    transactionDetails: Record<string, any>;
+  }) => {
     if (!user || !product) return;
     try {
       setLoading(true);
@@ -159,10 +193,13 @@ const Payment = () => {
         couponCode: appliedCoupon?.code,
         shipping: isPhysical ? { name, address, city, pincode, state, altPhone } : undefined,
         downloadLink: product.driveLink,
-        paymentMode: payment?.mode,
-        paymentRef: payment?.ref,
-        testPayment: payment?.test,
-        transactionDetails: payment?.transactionDetails,
+        paymentMode: payment.mode,
+        paymentRef: payment.ref,
+        testPayment: payment.test,
+        transactionDetails: payment.transactionDetails,
+        razorpayOrderId: payment.transactionDetails.razorpay_order_id,
+        razorpayPaymentId: payment.transactionDetails.razorpay_payment_id,
+        razorpaySignature: payment.transactionDetails.razorpay_signature,
       });
 
       if (!result.success) {
@@ -173,69 +210,157 @@ const Payment = () => {
         state: {
           mode: isPhysical ? "physical-paid" : "prepaid",
           orderId: result.orderId,
-          transactionId: result.transactionId || payment?.ref,
+          transactionId: result.transactionId || payment.ref,
           phone,
         },
       });
-    } catch (e) {
+    } catch {
       toast({ title: "Error", description: "Failed to create order.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePayment = async () => {
-    if (!validateCheckout()) return;
-
-    if (fakePaymentEnabled) {
-      setFakeGatewayOpen(true);
-      return;
+  const loadRazorpaySdk = async () => {
+    if (window.Razorpay) return true;
+    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existingScript) {
+      await new Promise((resolve, reject) => {
+        existingScript.addEventListener("load", resolve, { once: true });
+        existingScript.addEventListener("error", reject, { once: true });
+      });
+      return Boolean(window.Razorpay);
     }
 
-    await submitCompletedOrder();
+    return new Promise<boolean>((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.onload = () => resolve(Boolean(window.Razorpay));
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
   };
 
-  const simulateSandboxPayment = async (outcome: "success" | "failure") => {
-    if (!validateCheckout()) return;
+  const handlePayment = async () => {
+    if (!validateCheckout() || !user || !product) return;
 
-    setFakeGatewayProcessing(true);
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    setLoading(true);
+    try {
+      const sdkReady = await loadRazorpaySdk();
+      if (!sdkReady || !window.Razorpay) {
+        if (paymentBypassEnabled) {
+          toast({
+            title: "Using test payment",
+            description: "Razorpay checkout could not load, so a test transaction will be saved.",
+          });
+          await handlePaymentBypass();
+          return;
+        }
+        toast({ title: "Payment unavailable", description: "Could not load Razorpay checkout.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
 
-    if (outcome === "failure") {
-      setFakeGatewayProcessing(false);
-      toast({
-        title: "Sandbox payment failed",
-        description: "No order was created. Try the success path when you are ready.",
-        variant: "destructive",
+      const order = await createRazorpayOrder({ uid: user.uid, amount: finalPrice });
+      const razorpayKey = order.key || import.meta.env.VITE_RAZORPAY_KEY_ID;
+      if (!order.success || !order.orderId || !razorpayKey) {
+        if (paymentBypassEnabled) {
+          toast({
+            title: "Using test payment",
+            description: order.error || "Razorpay could not start, so a test transaction will be saved.",
+          });
+          await handlePaymentBypass();
+          return;
+        }
+        toast({ title: "Payment unavailable", description: order.error || "Could not start payment.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
+      const checkout = new window.Razorpay({
+        key: razorpayKey,
+        amount: Math.round(finalPrice * 100),
+        currency: order.currency || "INR",
+        name: "I Love Great Epic Mahabharat",
+        description: product.title,
+        image: product.image,
+        order_id: order.orderId,
+        prefill: { name, email, contact: phone },
+        notes: {
+          uid: user.uid,
+          product_id: product.id,
+          product_type: product.type,
+        },
+        theme: { color: "#D4AF37" },
+        handler: async (response: RazorpaySuccessResponse) => {
+          await submitCompletedOrder({
+            mode: "razorpay",
+            ref: response.razorpay_payment_id,
+            test: false,
+            transactionDetails: {
+              transaction_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              gateway: "razorpay",
+              status: "captured",
+              amount: finalPrice,
+              currency: "INR",
+              paid_at: new Date().toISOString(),
+            },
+          });
+        },
+        modal: {
+          ondismiss: () => setLoading(false),
+        },
       });
-      return;
+      checkout.open();
+    } catch {
+      if (paymentBypassEnabled) {
+        toast({
+          title: "Using test payment",
+          description: "Payment gateway failed, so a test transaction will be saved.",
+        });
+        await handlePaymentBypass();
+        return;
+      }
+      toast({ title: "Payment failed", description: "Please try again.", variant: "destructive" });
+      setLoading(false);
     }
+  };
+
+  const makeTestPaymentId = (prefix: string) => {
+    const suffix = window.crypto?.randomUUID?.().replace(/-/g, "").slice(0, 14) || Math.random().toString(36).slice(2, 16);
+    return `${prefix}_test_${Date.now()}_${suffix}`;
+  };
+
+  const handlePaymentBypass = async () => {
+    if (!validateCheckout() || !user || !product) return;
 
     const now = new Date();
-    const paymentRef = `txn_sandbox_${now.getTime()}`;
-    const gatewayOrderId = `order_sandbox_${Math.random().toString(36).slice(2, 10)}`;
-    const transactionDetails = {
-      transaction_id: paymentRef,
-      gateway_order_id: gatewayOrderId,
-      gateway_payment_id: paymentRef,
-      gateway: "fake_sandbox",
-      method: "sandbox_card",
-      status: "captured",
-      amount: finalPrice,
-      currency: "INR",
-      paid_at: now.toISOString(),
-      test: true,
-      last4: "4242",
-      card_network: "VISA",
-    };
+    const fakeOrderId = makeTestPaymentId("order");
+    const fakePaymentId = makeTestPaymentId("pay");
+    const fakeSignature = makeTestPaymentId("sig");
 
-    setFakeGatewayOpen(false);
-    setFakeGatewayProcessing(false);
     await submitCompletedOrder({
-      mode: "sandbox_gateway",
-      ref: paymentRef,
+      mode: "payment_bypass",
+      ref: fakePaymentId,
       test: true,
-      transactionDetails,
+      transactionDetails: {
+        transaction_id: fakePaymentId,
+        razorpay_order_id: fakeOrderId,
+        razorpay_payment_id: fakePaymentId,
+        razorpay_signature: fakeSignature,
+        gateway: "razorpay_test_bypass",
+        method: "payment_bypass",
+        status: "captured",
+        amount: finalPrice,
+        currency: "INR",
+        paid_at: now.toISOString(),
+        test: true,
+        bypass: true,
+      },
     });
   };
 
@@ -260,7 +385,6 @@ const Payment = () => {
 
   return (
     <div className="min-h-screen bg-[#050505] text-white selection:bg-primary/30 font-sans pb-20">
-      {/* Mini Top Bar */}
       <header className="px-5 h-16 flex items-center justify-between border-b border-white/5 bg-black/40 sticky top-0 z-50 backdrop-blur-md">
         <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/5 rounded-full transition-all">
           <ArrowLeft className="w-5 h-5 text-gray-400" />
@@ -269,12 +393,10 @@ const Payment = () => {
           <h1 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Checkout</h1>
           <p className="text-[8px] text-gray-600 font-bold uppercase">Safe & Secure</p>
         </div>
-        <div className="w-9" /> {/* Spacer */}
+        <div className="w-9" />
       </header>
 
       <div className="max-w-[480px] mx-auto px-5 py-8 space-y-10">
-
-        {/* Simplified Product Header */}
         <div className="flex items-center gap-5 p-4 bg-white/[0.02] rounded-3xl border border-white/5">
           <div className="w-20 h-20 bg-black/40 rounded-2xl p-2 border border-white/5 flex items-center justify-center shrink-0">
             <img src={product.image} alt={product.title} className="w-full h-full object-contain" />
@@ -282,9 +404,9 @@ const Payment = () => {
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-bold truncate uppercase tracking-tight">{product.title}</h2>
             <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">
-              {product.type === 'ebook' ? "Digital Access" : "Physical Artifact"}
+              {product.type === "ebook" ? "Digital Access" : "Physical Artifact"}
             </p>
-            <p className="text-lg font-black text-primary mt-1">₹{finalPrice}</p>
+            <p className="text-lg font-black text-primary mt-1">Rs.{finalPrice}</p>
             {finalPrice > 999 && (
               <span className="mt-2 inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-400">
                 Free Delivery
@@ -293,9 +415,7 @@ const Payment = () => {
           </div>
         </div>
 
-        {/* Unified Form */}
         <div className="space-y-8">
-          {/* 1. Contact Info */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-black text-primary">1</div>
@@ -310,7 +430,7 @@ const Payment = () => {
                   <Input
                     type="tel"
                     value={phone}
-                    onChange={e => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
                     className="h-12 bg-black border-white/10 rounded-xl pl-14 focus:border-primary/50 text-base font-mono"
                     placeholder="93928xxxxx"
                   />
@@ -321,7 +441,7 @@ const Payment = () => {
                 <Input
                   type="email"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="h-12 bg-black border-white/10 rounded-xl px-4 focus:border-primary/50"
                   placeholder="your@email.com"
                 />
@@ -329,7 +449,6 @@ const Payment = () => {
             </div>
           </div>
 
-          {/* 2. Shipping Info (Conditionally Rendered) */}
           {isPhysical && (
             <div className="space-y-4 pt-4 border-t border-white/5">
               <div className="flex items-center gap-2 mb-2">
@@ -337,18 +456,17 @@ const Payment = () => {
                 <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Shipping Details</h3>
               </div>
               <div className="grid gap-3">
-                <Input placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} className="h-12 bg-black border-white/10 rounded-xl" />
-                <Input placeholder="House No, Street, Area" value={address} onChange={e => setAddress(e.target.value)} className="h-12 bg-black border-white/10 rounded-xl" />
+                <Input placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className="h-12 bg-black border-white/10 rounded-xl" />
+                <Input placeholder="House No, Street, Area" value={address} onChange={(e) => setAddress(e.target.value)} className="h-12 bg-black border-white/10 rounded-xl" />
                 <div className="grid grid-cols-2 gap-3">
-                  <Input placeholder="City" value={city} onChange={e => setCity(e.target.value)} className="h-12 bg-black border-white/10 rounded-xl" />
-                  <Input placeholder="Pincode" value={pincode} onChange={e => setPincode(e.target.value.replace(/\D/g, "").slice(0, 6))} className="h-12 bg-black border-white/10 rounded-xl font-mono" />
+                  <Input placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} className="h-12 bg-black border-white/10 rounded-xl" />
+                  <Input placeholder="Pincode" value={pincode} onChange={(e) => setPincode(e.target.value.replace(/\D/g, "").slice(0, 6))} className="h-12 bg-black border-white/10 rounded-xl font-mono" />
                 </div>
-                <Input placeholder="State" value={state} onChange={e => setState(e.target.value)} className="h-12 bg-black border-white/10 rounded-xl" />
+                <Input placeholder="State" value={state} onChange={(e) => setState(e.target.value)} className="h-12 bg-black border-white/10 rounded-xl" />
               </div>
             </div>
           )}
 
-          {/* 3. Promo Code */}
           <div className="space-y-4 pt-4 border-t border-white/5">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-black text-primary">{isPhysical ? 3 : 2}</div>
@@ -359,12 +477,19 @@ const Payment = () => {
                 <Input
                   placeholder="OPTIONAL"
                   value={couponCode}
-                  onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                   disabled={!!appliedCoupon}
                   className="h-12 bg-black border-white/10 rounded-xl font-mono px-4 tracking-[0.2em] text-primary"
                 />
                 {appliedCoupon && (
-                  <button onClick={() => { setAppliedCoupon(null); setFinalPrice(basePrice); setCouponCode(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-red-500/50 p-1">
+                  <button
+                    onClick={() => {
+                      setAppliedCoupon(null);
+                      setFinalPrice(basePrice);
+                      setCouponCode("");
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-red-500/50 p-1"
+                  >
                     <X className="w-4 h-4" />
                   </button>
                 )}
@@ -378,15 +503,14 @@ const Payment = () => {
           </div>
         </div>
 
-        {/* Final Payment Panel */}
         <div className="pt-10 space-y-6">
           <div className="flex items-end justify-between px-2">
             <div>
               <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total Payable</p>
               <div className="flex items-baseline gap-2">
-                <span className="text-4xl font-black text-white px-1">₹{finalPrice}</span>
+                <span className="text-4xl font-black text-white px-1">Rs.{finalPrice}</span>
                 {appliedCoupon && (
-                  <span className="text-sm text-emerald-500 font-bold">(-₹{appliedCoupon.discount})</span>
+                  <span className="text-sm text-emerald-500 font-bold">(-Rs.{appliedCoupon.discount})</span>
                 )}
               </div>
             </div>
@@ -404,13 +528,24 @@ const Payment = () => {
               disabled={loading || isFormIncomplete}
               className="w-full h-16 rounded-[1.5rem] bg-primary text-black text-base font-black uppercase tracking-widest shadow-[0_15px_30px_-10px_rgba(212,175,55,0.4)] hover:scale-[1.01] active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? "Processing..." : fakePaymentEnabled ? "Open Sandbox Gateway" : "Pay & Start Journey"}
+              {loading ? "Processing..." : "Pay Now"}
             </Button>
           </div>
 
-          {fakePaymentEnabled && (
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[11px] text-amber-200">
-              Sandbox checkout is enabled for local testing. No real money will be charged.
+          {paymentBypassEnabled && (
+            <div className="space-y-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handlePaymentBypass}
+                disabled={loading || isFormIncomplete}
+                className="w-full h-12 rounded-2xl border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20"
+              >
+                Generate Test Payment
+              </Button>
+              <p className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[11px] text-amber-200">
+                Test bypass is enabled. It creates Razorpay-shaped transaction details and saves them through the same order flow.
+              </p>
             </div>
           )}
 
@@ -421,77 +556,7 @@ const Payment = () => {
             <Zap className="w-5 h-5" />
           </div>
         </div>
-
       </div>
-
-      {fakeGatewayOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-5 backdrop-blur-md">
-          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#080808] p-5 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary">
-                  <CreditCard className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black uppercase tracking-widest text-white">Sandbox Gateway</h3>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Testing only</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFakeGatewayOpen(false)}
-                disabled={fakeGatewayProcessing}
-                className="rounded-full p-2 text-gray-500 hover:bg-white/5 hover:text-white disabled:opacity-40"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4">
-              <div className="flex justify-between gap-4 text-xs">
-                <span className="text-gray-500">Product</span>
-                <span className="truncate text-right font-bold text-white">{product.title}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Amount</span>
-                <span className="font-black text-primary">Rs.{finalPrice}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Customer</span>
-                <span className="truncate text-right text-white">{email}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Test card</span>
-                <span className="font-mono text-white">4242 4242 4242 4242</span>
-              </div>
-            </div>
-
-            <p className="my-5 text-xs leading-relaxed text-gray-400">
-              Choose success to create a paid test order and grant access. Choose failure to verify the failed-payment UI without creating an order.
-            </p>
-
-            <div className="space-y-3">
-              <Button
-                type="button"
-                onClick={() => simulateSandboxPayment("success")}
-                disabled={fakeGatewayProcessing}
-                className="h-12 w-full rounded-xl bg-primary text-black font-black uppercase tracking-widest hover:bg-primary/90"
-              >
-                {fakeGatewayProcessing ? "Processing..." : "Simulate Success"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => simulateSandboxPayment("failure")}
-                disabled={fakeGatewayProcessing}
-                className="h-12 w-full rounded-xl border-red-500/20 bg-red-500/10 text-red-300 hover:bg-red-500/20"
-              >
-                Simulate Failure
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

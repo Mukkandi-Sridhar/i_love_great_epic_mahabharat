@@ -8,11 +8,13 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from firebase_admin import firestore
 from pydantic import BaseModel
 
 from backend.agent.brain import run_agent, run_agent_streaming
 from backend.agent.memory import get_history, get_user_context, save_turn
 from backend.core.config import settings
+from backend.core.firebase import get_firestore_client
 from backend.core.rate_limit import limiter
 
 
@@ -48,6 +50,37 @@ def _latest_message(body: ChatRequestBody) -> str:
     return ""
 
 
+def _save_chat_messages_task(uid: str, session_id: str, user_message: str, assistant_message: str, tools_called: list[str]) -> None:
+    """Persist chat messages in the customer-visible messages collection."""
+    if not uid or not session_id:
+        return
+
+    db = get_firestore_client()
+    if db is None:
+        return
+
+    def _save() -> None:
+        session_ref = db.collection("users").document(uid).collection("chat_sessions").document(session_id)
+        session_ref.set({"updatedAt": firestore.SERVER_TIMESTAMP, "uid": uid}, merge=True)
+        session_ref.collection("messages").add(
+            {
+                "role": "user",
+                "content": user_message,
+                "timestamp": firestore.SERVER_TIMESTAMP,
+            }
+        )
+        session_ref.collection("messages").add(
+            {
+                "role": "assistant",
+                "content": assistant_message,
+                "tools_called": tools_called,
+                "timestamp": firestore.SERVER_TIMESTAMP,
+            }
+        )
+
+    asyncio.create_task(asyncio.to_thread(_save))
+
+
 @router.post("/chat")
 @limiter.limit("20/minute")
 async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> dict:
@@ -72,6 +105,7 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
             user_context=user_context,
         )
         response = agent_result["response"]
+        _save_chat_messages_task(body.uid, session_id, message, response, agent_result.get("tools_called", []))
         await asyncio.gather(
             save_turn(body.uid, session_id, "user", message),
             save_turn(body.uid, session_id, "assistant", response),
@@ -115,6 +149,7 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
             return
 
         final_response = "Sorry, I'm having trouble connecting. Please try again."
+        tools_called: list[str] = []
         try:
             history, user_context = await asyncio.gather(
                 get_history(body.uid, session_id, limit=10),
@@ -132,9 +167,11 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
             ):
                 if event.get("type") == "done":
                     final_response = event.get("response") or final_response
+                    tools_called = event.get("tools_called", [])
                     event["session_id"] = session_id
                 yield _sse_event(event)
 
+            _save_chat_messages_task(body.uid, session_id, message, final_response, tools_called)
             await asyncio.gather(
                 save_turn(body.uid, session_id, "user", message),
                 save_turn(body.uid, session_id, "assistant", final_response),

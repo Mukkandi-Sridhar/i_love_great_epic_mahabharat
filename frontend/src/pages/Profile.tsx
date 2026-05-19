@@ -11,11 +11,15 @@ const Profile = () => {
   const { user, logout } = useFirebase();
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Check if the logged-in user is an admin
   useEffect(() => {
     if (!user) return;
-    getDoc(doc(db, "users", user.uid))
-      .then((snap) => setIsAdmin(snap.exists() && snap.data()?.isAdmin === true))
+    Promise.all([
+      getDoc(doc(db, "admins", user.uid)),
+      getDoc(doc(db, "users", user.uid)),
+    ])
+      .then(([adminSnap, userSnap]) => {
+        setIsAdmin(adminSnap.exists() || (userSnap.exists() && userSnap.data()?.isAdmin === true));
+      })
       .catch(() => setIsAdmin(false));
   }, [user]);
 

@@ -1,5 +1,6 @@
 import { db } from "@/lib/firebase";
 import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, where, addDoc, arrayUnion } from "firebase/firestore";
+import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { log } from "./logger";
 
 export type ProductType = "ebook" | "sdcard" | "pendrive";
@@ -37,6 +38,73 @@ export interface OrderInput {
     instagramId?: string;
   };
 }
+
+const fallbackById = new Map(FALLBACK_PRODUCTS.map((product) => [product.id, product]));
+
+const normalizeHighlights = (value: any, fallback?: Product) => {
+  const highlights = Array.isArray(value) ? value : fallback?.highlights || [];
+  return highlights.map((item: any) => {
+    if (typeof item === "string") return { icon: "check", text: item };
+    return item;
+  });
+};
+
+const normalizeProduct = (id: string, data: Record<string, any>): Product => {
+  const fallback = fallbackById.get(id);
+  return {
+    ...(fallback || {
+      id,
+      image: "",
+      title: "",
+      subtitle: "",
+      rating: 0,
+      reviewCount: 0,
+      price: 0,
+      originalPrice: 0,
+      tag: "",
+      type: "ebook" as const,
+      language: "",
+      totalSales: 0,
+      description: "",
+      highlights: [],
+    }),
+    ...data,
+    id,
+    image: data.image || data.imageUrl || fallback?.image || "",
+    highlights: normalizeHighlights(data.highlights, fallback),
+  } as Product;
+};
+
+export const fetchProducts = async (): Promise<Product[]> => {
+  log.info("fetchProducts");
+  try {
+    const snap = await getDocs(collection(db, "products"));
+    return snap.docs.map((d) => normalizeProduct(d.id, d.data() as Record<string, any>));
+  } catch (err) {
+    log.error("Error fetching products", err);
+    return [];
+  }
+};
+
+export const subscribeToProducts = (callback: (products: Product[]) => void) => {
+  log.info("subscribeToProducts");
+  try {
+    return onSnapshot(
+      collection(db, "products"),
+      (snap) => {
+        callback(snap.docs.map((d) => normalizeProduct(d.id, d.data() as Record<string, any>)));
+      },
+      (err) => {
+        log.error("Error subscribing to products", err);
+        callback([]);
+      }
+    );
+  } catch (err) {
+    log.error("Error starting product subscription", err);
+    callback([]);
+    return () => {};
+  }
+};
 
 export const updateUserProfile = async (
   userId: string,

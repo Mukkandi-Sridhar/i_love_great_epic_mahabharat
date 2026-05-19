@@ -14,8 +14,11 @@ const AdminGuard = ({ children }: { children: ReactNode }) => {
         if (!firebaseConfigured) { navigate("/auth"); return; }
         if (!user) { navigate("/auth"); return; }
 
-        getDoc(doc(db, "users", user.uid)).then((snap) => {
-            if (snap.exists() && snap.data()?.isAdmin === true) {
+        Promise.all([
+            getDoc(doc(db, "admins", user.uid)),
+            getDoc(doc(db, "users", user.uid)),
+        ]).then(([adminSnap, userSnap]) => {
+            if (adminSnap.exists() || (userSnap.exists() && userSnap.data()?.isAdmin === true)) {
                 setIsAdmin(true);
             } else {
                 navigate("/");

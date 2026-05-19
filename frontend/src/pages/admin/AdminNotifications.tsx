@@ -32,7 +32,7 @@ const AdminNotifications = () => {
 
             const res = await fetch(`${BACKEND_URL}/admin/send-notification`, {
                 method: "POST",
-                headers: adminHeaders(),
+                headers: await adminHeaders(),
                 body: JSON.stringify({
                     title,
                     message,

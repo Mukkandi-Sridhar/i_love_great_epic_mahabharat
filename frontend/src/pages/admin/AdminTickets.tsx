@@ -53,7 +53,7 @@ const AdminTickets = () => {
         try {
             const res = await fetch(`${BACKEND_URL}/admin/tickets/${ticket.id}/reply`, {
                 method: "POST",
-                headers: adminHeaders(),
+                headers: await adminHeaders(),
                 body: JSON.stringify({ reply })
             });
 

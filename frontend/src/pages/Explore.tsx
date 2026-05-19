@@ -1,11 +1,14 @@
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import HeroCarousel from "@/components/HeroCarousel";
 import ProductCard from "@/components/ProductCard";
 import TestimonialMarquee from "@/components/TestimonialMarquee";
 import DivineJourney from "@/components/DivineJourney";
-import { ebooks, pendrives } from "@/data/products";
+import { FALLBACK_PRODUCTS, Product } from "@/data/products";
+import { subscribeToProducts } from "@/services/db";
 import KrishnaHero from "@/components/KrishnaHero";
 import DivineSeparator from "@/components/DivineSeparator";
+import { SkeletonCard } from "@/components/SkeletonCard";
 import brandLogo from "@/assets/logo.png";
 import { BookOpen, Target, ArrowRight, Users, Zap, Shield } from "lucide-react";
 
@@ -33,7 +36,19 @@ const TrustBadges = () => (
 
 const Explore = () => {
   const navigate = useNavigate();
+  const [catalog, setCatalog] = useState<Product[]>(FALLBACK_PRODUCTS);
+  const [loadingProducts, setLoadingProducts] = useState(true);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToProducts((products) => {
+      setCatalog(products.length > 0 ? products : FALLBACK_PRODUCTS);
+      setLoadingProducts(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const ebooks = useMemo(() => catalog.filter((product) => product.type === "ebook"), [catalog]);
+  const pendrives = useMemo(() => catalog.filter((product) => product.type === "pendrive" || product.type === "sdcard"), [catalog]);
 
   return (
     <div className="pb-20">
@@ -69,7 +84,11 @@ const Explore = () => {
           <div
             className="flex overflow-x-auto gap-4 pb-6 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']"
           >
-            {ebooks.map((product) => (
+            {loadingProducts ? Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="min-w-[170px] w-[45vw] md:min-w-0 md:w-auto">
+                <SkeletonCard />
+              </div>
+            )) : ebooks.map((product) => (
               <div
                 key={product.id}
                 className="min-w-[170px] w-[45vw] md:min-w-0 md:w-auto"
@@ -108,7 +127,11 @@ const Explore = () => {
           <div
             className="flex overflow-x-auto gap-4 pb-6 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide"
           >
-            {pendrives.map((product) => (
+            {loadingProducts ? Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="min-w-[170px] w-[45vw] md:min-w-0 md:w-auto">
+                <SkeletonCard />
+              </div>
+            )) : pendrives.map((product) => (
               <div key={product.id} className="min-w-[170px] w-[45vw] md:min-w-0 md:w-auto">
                 <ProductCard {...product} />
               </div>

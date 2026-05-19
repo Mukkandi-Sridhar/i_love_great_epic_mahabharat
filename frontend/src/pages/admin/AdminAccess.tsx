@@ -58,7 +58,7 @@ const AdminAccess = () => {
         try {
             const res = await fetch(`${BACKEND_URL}/admin/grant-access`, {
                 method: "POST",
-                headers: adminHeaders(),
+                headers: await adminHeaders(),
                 body: JSON.stringify({
                     uid: targetUser.uid,
                     email: targetUser.email,
@@ -81,7 +81,7 @@ const AdminAccess = () => {
         try {
             const res = await fetch(`${BACKEND_URL}/admin/revoke-access`, {
                 method: "POST",
-                headers: adminHeaders(),
+                headers: await adminHeaders(),
                 body: JSON.stringify({ uid: targetUser.uid, product_id: productId })
             });
             if (res.ok) {

@@ -27,6 +27,12 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _bool_env(name: str, default: bool = False) -> bool:
+    """Return a boolean environment value from common truthy strings."""
+    value = _env(name, "true" if default else "false").lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     """Typed settings used by backend modules."""
@@ -39,12 +45,15 @@ class Settings:
     razorpay_key_id: str = _env("RAZORPAY_KEY_ID")
     razorpay_key_secret: str = _env("RAZORPAY_KEY_SECRET")
     razorpay_webhook_secret: str = _env("RAZORPAY_WEBHOOK_SECRET")
+    app_env: str = _env("APP_ENV", _env("ENVIRONMENT", "production")).lower()
+    allow_payment_bypass: bool = _bool_env("ALLOW_PAYMENT_BYPASS", False)
     chroma_dir: str = _env("CHROMA_DIR", "./storage/chroma")
     policies_file: str = _env("POLICIES_FILE", "./backend/company_policies_rag.txt")
     cors_origins: str = _env(
         "CORS_ORIGINS",
         "http://localhost:5173,http://localhost:3000,http://localhost:8080",
     )
+    # Deprecated: admin routes now use Firebase JWT + /admins/{uid}.
     admin_secret: str = _env("ADMIN_SECRET")
     chunk_size: int = _int_env("CHUNK_SIZE", 500)
     chunk_overlap: int = _int_env("CHUNK_OVERLAP", 100)
@@ -56,6 +65,11 @@ class Settings:
     def cors_origin_list(self) -> list[str]:
         """Return configured CORS origins as a cleaned list."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def is_dev(self) -> bool:
+        """Return whether the backend is running in a local/dev environment."""
+        return self.app_env in {"dev", "development", "local", "test"}
 
     @property
     def firebase_service_account_file(self) -> Path:

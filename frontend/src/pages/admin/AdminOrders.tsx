@@ -73,7 +73,7 @@ const AdminOrders = () => {
         try {
             const res = await fetch(`${BACKEND_URL}/admin/orders/${orderId}`, {
                 method: "PATCH",
-                headers: adminHeaders(),
+                headers: await adminHeaders(),
                 body: JSON.stringify({ status, tracking_number: tracking, admin_note: note })
             });
 
