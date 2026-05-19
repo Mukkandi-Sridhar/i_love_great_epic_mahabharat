@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { CheckCircle2, Hash, Mail, Package } from "lucide-react";
+import { CheckCircle2, CreditCard, Hash, Mail, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import { useEffect, useState } from "react";
@@ -12,6 +12,7 @@ const ThankYou = () => {
   const state = (location.state || {}) as {
     mode?: "prepaid" | "physical-paid";
     orderId?: string;
+    transactionId?: string;
     phone?: string;
   };
 
@@ -52,6 +53,14 @@ const ThankYou = () => {
               <Hash className="w-4 h-4 text-primary" />
               <span>
                 <span className="font-semibold text-foreground">Order ID:</span> {state.orderId}
+              </span>
+            </div>
+          )}
+          {state.transactionId && (
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <CreditCard className="w-4 h-4 text-primary" />
+              <span>
+                <span className="font-semibold text-foreground">Transaction ID:</span> {state.transactionId}
               </span>
             </div>
           )}

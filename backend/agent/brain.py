@@ -16,7 +16,7 @@ logger = logging.getLogger("ChatbotBackend.agent.brain")
 TOOL_MESSAGES = {
     "get_order_status": "Fetching your order details...",
     "get_user_purchases": "Checking your purchases...",
-    "verify_payment": "Verifying your payment...",
+    "verify_payment": "Verifying your transaction...",
     "create_refund_request": "Processing your refund request...",
     "create_support_ticket": "Creating your support ticket...",
     "check_coupon": "Validating your coupon...",
@@ -50,7 +50,7 @@ USER CONTEXT (loaded before conversation):
 AVAILABLE TOOLS:
 - get_order_status: check real order data from database
 - get_user_purchases: see what user has bought
-- verify_payment: verify a Razorpay payment by payment ID
+- verify_payment: verify a sandbox transaction/payment ID from the order system
 - create_refund_request: raise refund for physical products
 - create_support_ticket: log any unresolved issue
 - check_coupon: validate a coupon code
@@ -66,7 +66,7 @@ RULES:
 3. For refund questions:
    - Always call search_policies first for policy context
    - Then call create_refund_request if user wants to proceed
-4. For payment confusion, call verify_payment first when a payment ID is available
+4. For payment confusion, call verify_payment first when a transaction or payment ID is available
 5. For any unresolved issue, call create_support_ticket
 6. For product questions, call search_products
 7. For policy questions, call search_policies

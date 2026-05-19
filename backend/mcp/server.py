@@ -8,10 +8,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
 from firebase_admin import firestore
 
-from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
 from backend.rag.retrieve import retrieve_policies, retrieve_products
 
@@ -82,11 +80,14 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "verify_payment",
-            "description": "Verify a Razorpay payment by payment ID.",
+            "description": "Verify a sandbox transaction by transaction/payment ID.",
             "parameters": {
                 "type": "object",
-                "properties": {"razorpay_payment_id": {"type": "string"}},
-                "required": ["razorpay_payment_id"],
+                "properties": {
+                    "transaction_id": {"type": "string"},
+                    "razorpay_payment_id": {"type": "string"},
+                },
+                "required": ["transaction_id"],
             },
         },
         {
@@ -193,6 +194,10 @@ async def _get_order_status(uid: str, order_id: str | None = None) -> dict:
                     "product_type": data.get("productType") or data.get("type", ""),
                     "amount": data.get("amount", data.get("price", 0)),
                     "status": data.get("status", ""),
+                    "payment_mode": data.get("paymentMode", ""),
+                    "payment_ref": data.get("paymentRef", ""),
+                    "transaction_id": data.get("transactionId", ""),
+                    "transaction": data.get("transaction", {}),
                     "createdAt": _serialize_timestamp(data.get("createdAt")),
                     "tracking_number": data.get("trackingNumber") or data.get("tracking_number", ""),
                     "shipping_address": _city_state(data.get("shipping")),
@@ -242,35 +247,43 @@ async def _get_user_purchases(uid: str) -> dict:
         return {"purchases": [], "total_count": 0}
 
 
-async def _verify_payment(razorpay_payment_id: str) -> dict:
-    """Verify payment state with Razorpay."""
-    if not settings.razorpay_key_id or not settings.razorpay_key_secret:
-        return {"error": "Payment gateway is not configured right now."}
+async def _verify_payment(transaction_id: str) -> dict:
+    """Verify a fake sandbox transaction from Firestore."""
+    transaction_id = (transaction_id or "").strip()
+    if not transaction_id:
+        return {"error": "Please share a transaction ID."}
 
-    url = f"https://api.razorpay.com/v1/payments/{razorpay_payment_id}"
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(
-                url,
-                auth=(settings.razorpay_key_id, settings.razorpay_key_secret),
-            )
-        if response.status_code == 404:
-            return {"error": "Payment not found. Please check your payment ID."}
-        response.raise_for_status()
-        data = response.json()
-        created_at = data.get("created_at")
-        if created_at:
-            created_at = datetime.fromtimestamp(created_at, tz=timezone.utc).isoformat()
+    db = get_firestore_client()
+    if db is None:
+        return {"error": "Could not verify payment right now."}
+
+    def _read() -> dict:
+        transaction = db.collection("transactions_index").document(transaction_id).get()
+        if not transaction.exists:
+            return {"error": "Transaction not found. Please check your transaction ID."}
+
+        data = transaction.to_dict() or {}
+        paid_at = data.get("paid_at") or data.get("createdAt")
+        if hasattr(paid_at, "isoformat"):
+            paid_at = paid_at.isoformat()
+
         return {
-            "payment_id": data.get("id"),
-            "status": data.get("status"),
-            "amount_inr": (data.get("amount", 0) or 0) / 100,
-            "method": data.get("method"),
-            "captured": data.get("captured"),
-            "created_at": created_at,
+            "payment_id": data.get("gateway_payment_id") or data.get("transaction_id") or transaction.id,
+            "transaction_id": data.get("transaction_id") or transaction.id,
+            "order_id": data.get("orderId", ""),
+            "product_title": data.get("productTitle", ""),
+            "status": data.get("status", ""),
+            "amount_inr": data.get("amount", 0),
+            "currency": data.get("currency", "INR"),
+            "method": data.get("method", ""),
+            "gateway": data.get("gateway", "fake_sandbox"),
+            "captured": data.get("status") in {"captured", "paid", "success"},
+            "test_payment": data.get("testPayment", True),
+            "created_at": paid_at,
         }
-    except httpx.RequestError:
-        return {"error": "Could not connect to payment gateway."}
+
+    try:
+        return await asyncio.to_thread(_read)
     except Exception as exc:
         logger.warning("verify_payment failed: %s", exc)
         return {"error": "Could not verify payment right now."}
@@ -448,7 +461,7 @@ async def process_tool_call(name: str, arguments: str | dict | None) -> str:
         if name == "get_user_purchases":
             return _json(await _get_user_purchases(args.get("uid", "")))
         if name == "verify_payment":
-            return _json(await _verify_payment(args.get("razorpay_payment_id", "")))
+            return _json(await _verify_payment(args.get("transaction_id") or args.get("razorpay_payment_id", "")))
         if name == "create_refund_request":
             return _json(
                 await _create_refund_request(

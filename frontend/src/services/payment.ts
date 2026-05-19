@@ -17,17 +17,19 @@ export interface OrderOptions {
   paymentMode?: string;
   paymentRef?: string;
   testPayment?: boolean;
+  transactionDetails?: Record<string, any>;
 }
 
 export interface OrderResult {
   success: boolean;
   orderId?: string;
+  transactionId?: string;
   error?: string;
 }
 
 /**
  * Completes an order by calling the backend /complete-order route.
- * Backend writes to Firestore (orders + purchases) — no payment gateway.
+ * Backend writes the fake transaction, order, and purchase records to Firestore.
  */
 export const completeOrder = async (options: OrderOptions): Promise<OrderResult> => {
   try {
@@ -51,6 +53,7 @@ export const completeOrder = async (options: OrderOptions): Promise<OrderResult>
         payment_mode: options.paymentMode || null,
         payment_ref: options.paymentRef || null,
         test_payment: options.testPayment || false,
+        transaction_details: options.transactionDetails || null,
       }),
     });
 
@@ -60,7 +63,7 @@ export const completeOrder = async (options: OrderOptions): Promise<OrderResult>
     }
 
     const data = await res.json();
-    return { success: true, orderId: data.order_id };
+    return { success: true, orderId: data.order_id, transactionId: data.transaction_id };
   } catch (e: any) {
     return { success: false, error: e.message || "Network error" };
   }

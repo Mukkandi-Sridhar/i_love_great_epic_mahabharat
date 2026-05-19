@@ -79,7 +79,7 @@ const Payment = () => {
 
   const type = searchParams.get("type");
   const isPhysical = product?.type === "sdcard" || product?.type === "pendrive" || type === "sdcard" || type === "pendrive";
-  const fakePaymentEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_FAKE_PAYMENT === "true";
+  const fakePaymentEnabled = true;
 
   const missingFields = useMemo(() => {
     const missing: string[] = [];
@@ -141,7 +141,7 @@ const Payment = () => {
     return true;
   };
 
-  const submitCompletedOrder = async (payment?: { mode: string; ref: string; test: boolean }) => {
+  const submitCompletedOrder = async (payment?: { mode: string; ref: string; test: boolean; transactionDetails?: Record<string, any> }) => {
     if (!user || !product) return;
     try {
       setLoading(true);
@@ -162,13 +162,21 @@ const Payment = () => {
         paymentMode: payment?.mode,
         paymentRef: payment?.ref,
         testPayment: payment?.test,
+        transactionDetails: payment?.transactionDetails,
       });
 
       if (!result.success) {
         toast({ title: "Failed", description: result.error, variant: "destructive" });
         return;
       }
-      navigate("/thank-you", { state: { mode: isPhysical ? "physical-paid" : "prepaid", orderId: result.orderId, phone } });
+      navigate("/thank-you", {
+        state: {
+          mode: isPhysical ? "physical-paid" : "prepaid",
+          orderId: result.orderId,
+          transactionId: result.transactionId || payment?.ref,
+          phone,
+        },
+      });
     } catch (e) {
       toast({ title: "Error", description: "Failed to create order.", variant: "destructive" });
     } finally {
@@ -203,13 +211,31 @@ const Payment = () => {
       return;
     }
 
-    const paymentRef = `sandbox_${Date.now()}`;
+    const now = new Date();
+    const paymentRef = `txn_sandbox_${now.getTime()}`;
+    const gatewayOrderId = `order_sandbox_${Math.random().toString(36).slice(2, 10)}`;
+    const transactionDetails = {
+      transaction_id: paymentRef,
+      gateway_order_id: gatewayOrderId,
+      gateway_payment_id: paymentRef,
+      gateway: "fake_sandbox",
+      method: "sandbox_card",
+      status: "captured",
+      amount: finalPrice,
+      currency: "INR",
+      paid_at: now.toISOString(),
+      test: true,
+      last4: "4242",
+      card_network: "VISA",
+    };
+
     setFakeGatewayOpen(false);
     setFakeGatewayProcessing(false);
     await submitCompletedOrder({
       mode: "sandbox_gateway",
       ref: paymentRef,
       test: true,
+      transactionDetails,
     });
   };
 
@@ -433,6 +459,10 @@ const Payment = () => {
               <div className="flex justify-between text-xs">
                 <span className="text-gray-500">Customer</span>
                 <span className="truncate text-right text-white">{email}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Test card</span>
+                <span className="font-mono text-white">4242 4242 4242 4242</span>
               </div>
             </div>
 

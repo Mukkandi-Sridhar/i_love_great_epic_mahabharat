@@ -97,6 +97,7 @@ class CompleteOrderRequest(BaseModel):
     payment_mode: Optional[str] = None
     payment_ref: Optional[str] = None
     test_payment: bool = False
+    transaction_details: Optional[dict] = None
 
 
 class ValidateCouponRequest(BaseModel):
@@ -154,6 +155,21 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         discount_value = 0
         product_type = body.product_type.lower()
         product_title = body.product_title or f"{product_type.title()} - {body.product_id}"
+        transaction_details = body.transaction_details or {}
+        transaction_id = (
+            transaction_details.get("transaction_id")
+            or transaction_details.get("gateway_payment_id")
+            or body.payment_ref
+        )
+        if not transaction_id:
+            transaction_id = f"txn_sandbox_{db.collection('transactions_index').document().id}"
+        transaction_details = {
+            "transaction_id": transaction_id,
+            "gateway": body.payment_mode or "fake_sandbox",
+            "status": "captured" if body.test_payment else "paid",
+            "currency": "INR",
+            **transaction_details,
+        }
 
         if body.coupon_code:
             coupon_ref = db.collection("coupons").document(body.coupon_code.upper())
@@ -193,6 +209,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             "status": "paid",
             "paymentMode": body.payment_mode or "direct",
             "paymentRef": body.payment_ref,
+            "transactionId": transaction_id,
+            "transaction": transaction_details,
             "testPayment": body.test_payment,
             "shipping": body.shipping or {},
             "createdAt": firestore.SERVER_TIMESTAMP,
@@ -201,8 +219,6 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         user_order_ref = db.collection("users").document(body.uid).collection("orders").document()
         order_doc_id = user_order_ref.id
         order_data["orderId"] = order_doc_id
-        user_order_ref.set(order_data)
-        db.collection("orders_index").document(order_doc_id).set(order_data)
 
         purchase_data = {
             "productId": body.product_id,
@@ -219,6 +235,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             "source": "checkout",
             "paymentMode": body.payment_mode or "direct",
             "paymentRef": body.payment_ref,
+            "transactionId": transaction_id,
             "testPayment": body.test_payment,
             "downloadLink": body.download_link,
             "driveLink": body.download_link,
@@ -226,8 +243,39 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             "createdAt": firestore.SERVER_TIMESTAMP,
             "updatedAt": firestore.SERVER_TIMESTAMP,
         }
-        db.collection("users").document(body.uid).collection("purchases").document(body.product_id).set(purchase_data)
-        return {"status": "success", "order_id": order_doc_id, "final_amount": final_amount}
+
+        transaction_data = {
+            **transaction_details,
+            "transaction_id": transaction_id,
+            "uid": body.uid,
+            "email": body.email,
+            "phone": body.phone,
+            "orderId": order_doc_id,
+            "productId": body.product_id,
+            "productTitle": product_title,
+            "amount": final_amount,
+            "currency": transaction_details.get("currency", "INR"),
+            "status": transaction_details.get("status", "captured" if body.test_payment else "paid"),
+            "gateway": transaction_details.get("gateway", body.payment_mode or "direct"),
+            "method": transaction_details.get("method", "unknown"),
+            "testPayment": body.test_payment,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+        }
+
+        batch = db.batch()
+        batch.set(user_order_ref, order_data)
+        batch.set(db.collection("orders_index").document(order_doc_id), order_data)
+        batch.set(db.collection("users").document(body.uid).collection("purchases").document(body.product_id), purchase_data)
+        if transaction_id:
+            batch.set(db.collection("users").document(body.uid).collection("transactions").document(transaction_id), transaction_data)
+            batch.set(db.collection("transactions_index").document(transaction_id), transaction_data)
+        batch.commit()
+        return {
+            "status": "success",
+            "order_id": order_doc_id,
+            "final_amount": final_amount,
+            "transaction_id": transaction_id,
+        }
 
     try:
         return await asyncio.to_thread(_write_order)
