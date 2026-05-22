@@ -6,10 +6,12 @@ export const jsonHeaders = () => ({
   "Content-Type": "application/json",
 });
 
-export const adminHeaders = async () => {
+export const authHeaders = async () => {
   const token = await auth?.currentUser?.getIdToken();
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 };
+
+export const adminHeaders = authHeaders;

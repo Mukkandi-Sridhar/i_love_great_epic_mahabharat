@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections import defaultdict
+from collections import OrderedDict
 from typing import Any
 
 from firebase_admin import firestore
@@ -14,7 +14,29 @@ from backend.core.firebase import get_firestore_client
 
 
 logger = logging.getLogger("ChatbotBackend.agent.memory")
-_fallback_sessions: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+
+class _BoundedDict(OrderedDict):
+    """Small LRU store for no-Firestore chat history fallback."""
+
+    def __init__(self, maxsize: int = 500):
+        super().__init__()
+        self.maxsize = maxsize
+
+    def __setitem__(self, key: str, value: list[dict[str, Any]]) -> None:
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        if len(self) > self.maxsize:
+            self.popitem(last=False)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        value = super().get(key, default)
+        if key in self:
+            self.move_to_end(key)
+        return value
+
+
+_fallback_sessions: _BoundedDict = _BoundedDict(maxsize=500)
 
 
 def _session_key(uid: str, session_id: str) -> str:
@@ -30,34 +52,23 @@ def _serialize_timestamp(value: Any) -> Any:
         return value
 
 
-async def save_turn(uid: str, session_id: str, role: str, content: str) -> None:
-    """Save a conversation turn to Firestore, falling back to local memory."""
+def append_fallback_turns(uid: str, session_id: str, turns: list[dict[str, Any]]) -> None:
+    """Persist turns in bounded local memory when Firestore is unavailable."""
     if not uid or not session_id:
         return
+    key = _session_key(uid, session_id)
+    existing = list(_fallback_sessions.get(key, []))
+    for turn in turns:
+        role = turn.get("role")
+        content = turn.get("content")
+        if role and content:
+            existing.append({"role": role, "content": content, "timestamp": time.time()})
+    _fallback_sessions[key] = existing
 
-    db = get_firestore_client()
-    if db is None:
-        _fallback_sessions[_session_key(uid, session_id)].append(
-            {"role": role, "content": content, "timestamp": time.time()}
-        )
-        return
 
-    def _write() -> None:
-        db.collection("users").document(uid).collection("chat_sessions").document(session_id).collection("turns").add(
-            {
-                "role": role,
-                "content": content,
-                "timestamp": firestore.SERVER_TIMESTAMP,
-            }
-        )
-
-    try:
-        await asyncio.to_thread(_write)
-    except Exception as exc:
-        logger.warning("Could not save chat turn: %s", exc)
-        _fallback_sessions[_session_key(uid, session_id)].append(
-            {"role": role, "content": content, "timestamp": time.time()}
-        )
+async def save_turn(uid: str, session_id: str, role: str, content: str) -> None:
+    """Deprecated compatibility shim; messages collection is the source of truth."""
+    append_fallback_turns(uid, session_id, [{"role": role, "content": content}])
 
 
 async def get_history(uid: str, session_id: str, limit: int = 10) -> list[dict]:
@@ -91,26 +102,7 @@ async def get_history(uid: str, session_id: str, limit: int = 10) -> list[dict]:
                 for doc in message_docs
                 if (doc.to_dict() or {}).get("content")
             ]
-
-        turns_query = (
-            db.collection("users")
-            .document(uid)
-            .collection("chat_sessions")
-            .document(session_id)
-            .collection("turns")
-            .order_by("timestamp", direction=firestore.Query.DESCENDING)
-            .limit(limit)
-        )
-        docs = list(turns_query.stream())
-        docs.reverse()
-        return [
-            {
-                "role": (doc.to_dict() or {}).get("role", "user"),
-                "content": (doc.to_dict() or {}).get("content", ""),
-            }
-            for doc in docs
-            if (doc.to_dict() or {}).get("content")
-        ]
+        return []
 
     try:
         return await asyncio.to_thread(_read)

@@ -26,7 +26,7 @@ load_dotenv(os.path.join(Path(__file__).resolve().parent, ".env"))
 
 from backend.api.chat import router as chat_router
 from backend.api.webhook import router as webhook_router
-from backend.core.auth import require_admin
+from backend.core.auth import require_admin, verify_request_uid
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
 from backend.core.rate_limit import limiter
@@ -40,10 +40,25 @@ logging.basicConfig(
 logger = logging.getLogger("ChatbotBackend")
 
 
+def _validate_policies_file() -> None:
+    """Warn when the configured policies file looks generic instead of domain-specific."""
+    try:
+        policy_path = settings.policies_path
+        if not policy_path.exists():
+            return
+        content = policy_path.read_text(encoding="utf-8")
+        lowered = content.lower()
+        if "mahabharat" not in lowered and "ilovegreatepic" not in lowered:
+            logger.warning("Policies file may not be domain-specific. Check %s", policy_path)
+    except Exception as exc:
+        logger.warning("Could not validate policies file: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Warm RAG and MCP resources on startup, then release local handles."""
     try:
+        _validate_policies_file()
         await ingest_policies()
         await ingest_products()
         warm_tool_cache()
@@ -209,9 +224,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
     """Complete an order, apply a valid coupon, and grant product access."""
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
-
-    request_host = request.client.host if request.client else ""
-    is_local_request = request_host in {"127.0.0.1", "::1", "localhost"}
+    await verify_request_uid(request, body.uid, required=True)
 
     def _write_order() -> dict:
         base_price = body.base_price
@@ -224,9 +237,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         razorpay_payment_id = body.razorpay_payment_id or transaction_details.get("razorpay_payment_id")
         razorpay_signature = body.razorpay_signature or transaction_details.get("razorpay_signature")
 
-        allow_test_payment = body.test_payment and (
-            settings.is_dev or settings.allow_payment_bypass or is_local_request
-        )
+        allow_test_payment = body.test_payment and (settings.is_dev or settings.allow_payment_bypass)
         if not allow_test_payment:
             _verify_razorpay_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
 
@@ -238,6 +249,10 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         )
         if not transaction_id:
             transaction_id = f"txn_test_{db.collection('transactions_index').document().id}"
+        transaction_index_ref = db.collection("transactions_index").document(transaction_id)
+        if transaction_index_ref.get().exists:
+            raise HTTPException(status_code=409, detail="Transaction already processed")
+
         transaction_details = {
             "transaction_id": transaction_id,
             "gateway": body.payment_mode or "test_checkout",
@@ -358,7 +373,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         batch.set(db.collection("users").document(body.uid).collection("purchases").document(body.product_id), purchase_data)
         if transaction_id:
             batch.set(db.collection("users").document(body.uid).collection("transactions").document(transaction_id), transaction_data)
-            batch.set(db.collection("transactions_index").document(transaction_id), transaction_data)
+            batch.set(transaction_index_ref, transaction_data)
         if product_ref is not None and product_snap is not None and product_snap.exists:
             batch.update(product_ref, {"stockCount": firestore.Increment(-1)})
         batch.commit()
@@ -379,7 +394,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
 
 
 @app.post("/validate-coupon")
-async def validate_coupon(body: ValidateCouponRequest):
+@limiter.limit("10/minute")
+async def validate_coupon(request: Request, body: ValidateCouponRequest):
     """Validate a coupon code and return the discount and final amount."""
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -424,6 +440,14 @@ async def validate_coupon(body: ValidateCouponRequest):
     except Exception as exc:
         logger.error("Coupon validation failed: %s", exc)
         raise HTTPException(status_code=500, detail="Validation error")
+
+
+@app.post("/admin/rag/refresh")
+@limiter.limit("5/minute")
+async def refresh_rag(request: Request, admin_uid: str = Depends(require_admin)):
+    """Refresh the product RAG index from Firestore."""
+    await ingest_products()
+    return {"status": "refreshed"}
 
 
 @app.post("/admin/grant-access")

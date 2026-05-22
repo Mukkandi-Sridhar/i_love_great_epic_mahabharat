@@ -1,4 +1,4 @@
-import { BACKEND_URL, jsonHeaders } from "@/services/api";
+import { BACKEND_URL, authHeaders } from "@/services/api";
 
 export interface OrderOptions {
   uid: string;
@@ -43,7 +43,7 @@ export const createRazorpayOrder = async (options: { uid: string; amount: number
   try {
     const res = await fetch(`${BACKEND_URL}/create-razorpay-order`, {
       method: "POST",
-      headers: jsonHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify({
         uid: options.uid,
         amount: options.amount,
@@ -76,7 +76,7 @@ export const completeOrder = async (options: OrderOptions): Promise<OrderResult>
   try {
     const res = await fetch(`${BACKEND_URL}/complete-order`, {
       method: "POST",
-      headers: jsonHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify({
         uid: options.uid,
         email: options.email,

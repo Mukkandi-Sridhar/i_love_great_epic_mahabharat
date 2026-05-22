@@ -97,13 +97,15 @@ async def razorpay_webhook(
                     },
                     merge=True,
                 )
-                db.collection("users").document(uid).collection("notifications").add(
+                notif_id = payment_id or f"payment-{order_id or product_id}"
+                db.collection("users").document(uid).collection("notifications").document(notif_id).set(
                     {
                         "title": "Payment Successful",
                         "message": f"Access has been granted for {product_title}.",
                         "read": False,
                         "createdAt": firestore.SERVER_TIMESTAMP,
-                    }
+                    },
+                    merge=True,
                 )
 
         if event_name == "payment.failed":
@@ -126,6 +128,6 @@ async def razorpay_webhook(
                     }
                 )
     except Exception as exc:
-        logger.warning("Razorpay webhook processing failed after acceptance: %s", exc)
+        logger.error("Razorpay webhook processing failed after acceptance: %s", exc)
 
     return {"status": "ok"}

@@ -8,10 +8,9 @@ import json
 import logging
 from typing import Any
 
-from openai import AsyncOpenAI
-
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
+from backend.core.openai_client import _get_openai_client
 
 
 logger = logging.getLogger("ChatbotBackend.rag.ingest")
@@ -204,7 +203,7 @@ async def _embed_texts(texts: list[str]) -> list[list[float]]:
         logger.warning("OPENAI_API_KEY missing; RAG ingestion cannot embed documents.")
         return []
     try:
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client = _get_openai_client()
         response = await client.embeddings.create(
             model=settings.openai_embedding_model,
             input=texts,

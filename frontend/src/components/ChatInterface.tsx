@@ -255,6 +255,8 @@ export const ChatInterface = () => {
         setIsLoading(true);
 
         let handledError = false;
+        let streamingAssistantStarted = false;
+        let streamedContent = "";
 
         try {
             await chatService.sendMessageStreaming(
@@ -287,6 +289,28 @@ export const ChatInterface = () => {
                             setAgentStatus("Generating response...");
                             setActiveTools([]);
                             break;
+                        case "token":
+                            streamedContent += event.delta || "";
+                            if (!streamingAssistantStarted) {
+                                streamingAssistantStarted = true;
+                                setMessages((prev) => [
+                                    ...prev,
+                                    {
+                                        role: "assistant",
+                                        content: streamedContent,
+                                        timestamp: Date.now(),
+                                    },
+                                ]);
+                            } else {
+                                setMessages((prev) =>
+                                    prev.map((item, index) =>
+                                        index === prev.length - 1 && item.role === "assistant"
+                                            ? { ...item, content: streamedContent, timestamp: Date.now() }
+                                            : item
+                                    )
+                                );
+                            }
+                            break;
                         case "done":
                             if (event.session_id && event.session_id !== sessionId) {
                                 setSessionId(event.session_id);
@@ -295,14 +319,25 @@ export const ChatInterface = () => {
                                 }
                             }
                             if (!handledError) {
-                                setMessages((prev) => [
-                                    ...prev,
-                                    {
-                                        role: "assistant",
-                                        content: event.response || "I can help with that.",
-                                        timestamp: Date.now(),
-                                    },
-                                ]);
+                                if (streamingAssistantStarted) {
+                                    const finalContent = event.response || streamedContent || "I can help with that.";
+                                    setMessages((prev) =>
+                                        prev.map((item, index) =>
+                                            index === prev.length - 1 && item.role === "assistant"
+                                                ? { ...item, content: finalContent, timestamp: Date.now() }
+                                                : item
+                                        )
+                                    );
+                                } else {
+                                    setMessages((prev) => [
+                                        ...prev,
+                                        {
+                                            role: "assistant",
+                                            content: event.response || "I can help with that.",
+                                            timestamp: Date.now(),
+                                        },
+                                    ]);
+                                }
                             }
                             setAgentStatus(null);
                             setActiveTools([]);

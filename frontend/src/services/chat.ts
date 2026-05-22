@@ -1,5 +1,5 @@
 
-import { BACKEND_URL, jsonHeaders } from "@/services/api";
+import { BACKEND_URL, authHeaders } from "@/services/api";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -23,9 +23,10 @@ export interface ChatResponse {
 }
 
 export interface StreamEvent {
-  type: "status" | "tool_start" | "tool_end" | "generating" | "done" | "error";
+  type: "status" | "tool_start" | "tool_end" | "generating" | "token" | "done" | "error";
   message?: string;
   tool?: string;
+  delta?: string;
   response?: string;
   session_id?: string;
 }
@@ -35,7 +36,7 @@ export const chatService = {
     try {
       const response = await fetch(`${BACKEND_URL}/chat`, {
         method: "POST",
-        headers: jsonHeaders(),
+        headers: await authHeaders(),
         body: JSON.stringify(payload),
       });
       
@@ -61,7 +62,7 @@ export const chatService = {
   ): Promise<void> {
     const response = await fetch(`${BACKEND_URL}/chat/stream`, {
       method: "POST",
-      headers: jsonHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify(payload),
     });
 

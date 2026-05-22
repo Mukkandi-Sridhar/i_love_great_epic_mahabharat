@@ -6,13 +6,13 @@ import asyncio
 import logging
 from typing import Any
 
-from openai import AsyncOpenAI
-
 from backend.core.config import settings
+from backend.core.openai_client import _get_openai_client
 from backend.rag.ingest import POLICY_COLLECTION, PRODUCT_COLLECTION, _get_chroma_client
 
 
 logger = logging.getLogger("ChatbotBackend.rag.retrieve")
+MIN_SCORE = 0.30
 
 
 async def _embed_query(query: str) -> list[float] | None:
@@ -20,7 +20,7 @@ async def _embed_query(query: str) -> list[float] | None:
     if not query.strip() or not settings.openai_api_key:
         return None
     try:
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client = _get_openai_client()
         response = await client.embeddings.create(
             model=settings.openai_embedding_model,
             input=query,
@@ -45,10 +45,9 @@ def _query_collection(name: str, embedding: list[float], n_results: int) -> dict
 
 
 def _score_from_distance(distance: Any) -> float:
-    """Convert a Chroma distance into a bounded relevance score."""
+    """Convert L2 distance to similarity score for L2-normalized embeddings."""
     try:
-        value = float(distance)
-        return max(0.0, min(1.0, 1.0 - value))
+        return max(0.0, 1.0 - float(distance) / 2.0)
     except Exception:
         return 0.0
 
@@ -72,7 +71,7 @@ async def retrieve_policies(query: str) -> list[dict]:
                     "score": _score_from_distance(distance),
                 }
             )
-        return output
+        return [item for item in output if item["score"] >= MIN_SCORE]
     except Exception as exc:
         logger.warning("Policy retrieval failed gracefully: %s", exc)
         return []
@@ -102,7 +101,7 @@ async def retrieve_products(query: str) -> list[dict]:
                     "score": _score_from_distance(distance),
                 }
             )
-        return output
+        return [item for item in output if item["score"] >= MIN_SCORE]
     except Exception as exc:
         logger.warning("Product retrieval failed gracefully: %s", exc)
         return []

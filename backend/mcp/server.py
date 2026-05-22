@@ -16,6 +16,7 @@ from backend.rag.retrieve import retrieve_policies, retrieve_products
 
 logger = logging.getLogger("ChatbotBackend.mcp")
 SERVER_NAME = "mahabharat-support-mcp"
+SENSITIVE_TRANSACTION_FIELDS = {"razorpay_signature", "razorpay_key", "secret"}
 
 
 def _json(data: dict) -> str:
@@ -54,6 +55,18 @@ def _city_state(shipping: dict | None) -> dict:
     }
 
 
+def _clean_uid(uid: str) -> str | None:
+    """Return a stripped uid or None when it is missing."""
+    uid = (uid or "").strip()
+    return uid or None
+
+
+def _safe_transaction(transaction: dict | None) -> dict:
+    """Remove sensitive payment fields before exposing transaction data to the LLM."""
+    transaction = transaction or {}
+    return {key: value for key, value in transaction.items() if key not in SENSITIVE_TRANSACTION_FIELDS}
+
+
 def list_tools() -> list[dict]:
     """Return OpenAI-compatible function specs for all MCP tools."""
     return [
@@ -84,10 +97,10 @@ def list_tools() -> list[dict]:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "transaction_id": {"type": "string"},
-                    "razorpay_payment_id": {"type": "string"},
+                    "transaction_id": {"type": "string", "description": "Firestore transaction ID"},
+                    "razorpay_payment_id": {"type": "string", "description": "Razorpay payment ID (rzp_...)"},
                 },
-                "required": ["transaction_id"],
+                "required": [],
             },
         },
         {
@@ -137,7 +150,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "search_policies",
-            "description": "Search company policies and produce a grounded answer.",
+            "description": "Search company policies and return retrieved chunks for synthesis.",
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string"}},
@@ -165,6 +178,10 @@ def warm_tool_cache() -> list[dict]:
 
 async def _get_order_status(uid: str, order_id: str | None = None) -> dict:
     """Fetch recent user orders or one specific order."""
+    uid = _clean_uid(uid)
+    if not uid:
+        return {"error": "User identifier is required."}
+
     db = get_firestore_client()
     if db is None:
         return {"error": "Could not fetch orders"}
@@ -187,6 +204,7 @@ async def _get_order_status(uid: str, order_id: str | None = None) -> dict:
             if not doc.exists:
                 continue
             data = doc.to_dict() or {}
+            safe_transaction = _safe_transaction(data.get("transaction"))
             orders.append(
                 {
                     "order_id": doc.id,
@@ -197,7 +215,7 @@ async def _get_order_status(uid: str, order_id: str | None = None) -> dict:
                     "payment_mode": data.get("paymentMode", ""),
                     "payment_ref": data.get("paymentRef", ""),
                     "transaction_id": data.get("transactionId", ""),
-                    "transaction": data.get("transaction", {}),
+                    "transaction": safe_transaction,
                     "createdAt": _serialize_timestamp(data.get("createdAt")),
                     "tracking_number": data.get("trackingNumber") or data.get("tracking_number", ""),
                     "shipping_address": _city_state(data.get("shipping")),
@@ -214,6 +232,10 @@ async def _get_order_status(uid: str, order_id: str | None = None) -> dict:
 
 async def _get_user_purchases(uid: str) -> dict:
     """Fetch all purchases for a user."""
+    uid = _clean_uid(uid)
+    if not uid:
+        return {"error": "User identifier is required."}
+
     db = get_firestore_client()
     if db is None:
         return {"purchases": [], "total_count": 0}
@@ -291,6 +313,14 @@ async def _verify_payment(transaction_id: str) -> dict:
 
 async def _create_refund_request(uid: str, email: str, order_id: str, reason: str, product_type: str) -> dict:
     """Create a refund ticket when product policy allows it."""
+    uid = _clean_uid(uid)
+    if not uid:
+        return {"error": "User identifier is required."}
+
+    order_id = (order_id or "").strip()
+    if not order_id:
+        return {"refundable": False, "message": "Order not found for your account."}
+
     normalized_type = (product_type or "").lower()
     if normalized_type == "ebook":
         return {
@@ -306,6 +336,10 @@ async def _create_refund_request(uid: str, email: str, order_id: str, reason: st
         return {"refundable": True, "message": "Refund request noted. Please contact support to complete it."}
 
     def _write() -> dict:
+        order_doc = db.collection("users").document(uid).collection("orders").document(order_id).get()
+        if not order_doc.exists:
+            return {"refundable": False, "message": "Order not found for your account."}
+
         ticket_data = {
             "type": "refund_request",
             "category": "refund",
@@ -316,16 +350,21 @@ async def _create_refund_request(uid: str, email: str, order_id: str, reason: st
             "status": "open",
             "createdAt": firestore.SERVER_TIMESTAMP,
         }
-        _, user_ticket_ref = db.collection("users").document(uid).collection("tickets").add(ticket_data)
-        db.collection("tickets").document(user_ticket_ref.id).set({**ticket_data, "uid": uid})
-        db.collection("users").document(uid).collection("notifications").add(
+        user_ticket_ref = db.collection("users").document(uid).collection("tickets").document()
+        notification_ref = db.collection("users").document(uid).collection("notifications").document()
+        batch = db.batch()
+        batch.set(user_ticket_ref, ticket_data)
+        batch.set(db.collection("tickets").document(user_ticket_ref.id), {**ticket_data, "uid": uid})
+        batch.set(
+            notification_ref,
             {
                 "title": "Refund Request Received",
                 "message": f"We received your refund request for order {order_id}.",
                 "read": False,
                 "createdAt": firestore.SERVER_TIMESTAMP,
-            }
+            },
         )
+        batch.commit()
         return {
             "refundable": True,
             "ticket_id": user_ticket_ref.id,
@@ -341,6 +380,10 @@ async def _create_refund_request(uid: str, email: str, order_id: str, reason: st
 
 async def _create_support_ticket(uid: str, email: str, name: str, issue: str, category: str) -> dict:
     """Create a support ticket in user and root ticket collections."""
+    uid = _clean_uid(uid)
+    if not uid:
+        return {"error": "User identifier is required."}
+
     db = get_firestore_client()
     if db is None:
         return {"message": "Your support request has been received. We'll contact you within 24 hours."}
@@ -354,16 +397,21 @@ async def _create_support_ticket(uid: str, email: str, name: str, issue: str, ca
             "status": "open",
             "createdAt": firestore.SERVER_TIMESTAMP,
         }
-        _, user_ticket_ref = db.collection("users").document(uid).collection("tickets").add(ticket_data)
-        db.collection("tickets").document(user_ticket_ref.id).set({**ticket_data, "uid": uid})
-        db.collection("users").document(uid).collection("notifications").add(
+        user_ticket_ref = db.collection("users").document(uid).collection("tickets").document()
+        notification_ref = db.collection("users").document(uid).collection("notifications").document()
+        batch = db.batch()
+        batch.set(user_ticket_ref, ticket_data)
+        batch.set(db.collection("tickets").document(user_ticket_ref.id), {**ticket_data, "uid": uid})
+        batch.set(
+            notification_ref,
             {
                 "title": "Support Ticket Created",
                 "message": "Your ticket has been received. We'll respond within 24 hours.",
                 "read": False,
                 "createdAt": firestore.SERVER_TIMESTAMP,
-            }
+            },
         )
+        batch.commit()
         return {
             "ticket_id": user_ticket_ref.id,
             "message": "Your support ticket has been created. We'll contact you within 24 hours.",
@@ -419,10 +467,10 @@ async def _check_coupon(code: str, amount: float) -> dict:
 
 
 async def _search_policies(query: str) -> dict:
-    """Search policies and format a concise grounded answer."""
+    """Search policies and return chunks for the model to synthesize."""
     results = await retrieve_policies(query)
     if not results:
-        return {"answer": "I could not find a matching policy. Please contact support for confirmation.", "sections_referenced": []}
+        return {"retrieved_chunks": [], "sections_referenced": []}
     sections = []
     lines = []
     for result in results[:3]:
@@ -430,7 +478,7 @@ async def _search_policies(query: str) -> dict:
         if section not in sections:
             sections.append(section)
         lines.append(f"{section}: {result.get('text', '')}")
-    return {"answer": "\n\n".join(lines), "sections_referenced": sections}
+    return {"retrieved_chunks": lines, "sections_referenced": sections}
 
 
 async def _search_products(query: str) -> dict:

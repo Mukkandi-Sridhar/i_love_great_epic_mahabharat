@@ -9,13 +9,15 @@ from uuid import uuid4
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from firebase_admin import firestore
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from backend.agent.brain import run_agent, run_agent_streaming
-from backend.agent.memory import get_history, get_user_context, save_turn
+from backend.agent.memory import append_fallback_turns, get_history, get_user_context
+from backend.core.auth import verify_request_uid
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
-from backend.core.rate_limit import limiter
+from backend.core.rate_limit import check_uid_rate_limit, limiter
+from backend.mcp.server import list_tools as list_mcp_tools
 
 
 logger = logging.getLogger("ChatbotBackend.api.chat")
@@ -39,6 +41,12 @@ class ChatRequestBody(BaseModel):
     session_id: Optional[str] = None
     messages: Optional[list[MessageInput]] = None
 
+    @field_validator("uid", mode="before")
+    @classmethod
+    def uid_must_not_be_whitespace(cls, v):
+        """Normalize uid input before endpoint auth checks."""
+        return "" if v is None else str(v).strip()
+
 
 def _latest_message(body: ChatRequestBody) -> str:
     """Extract the latest user message from the new or legacy payload."""
@@ -57,6 +65,14 @@ def _save_chat_messages_task(uid: str, session_id: str, user_message: str, assis
 
     db = get_firestore_client()
     if db is None:
+        append_fallback_turns(
+            uid,
+            session_id,
+            [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": assistant_message},
+            ],
+        )
         return
 
     def _save() -> None:
@@ -78,7 +94,16 @@ def _save_chat_messages_task(uid: str, session_id: str, user_message: str, assis
             }
         )
 
-    asyncio.create_task(asyncio.to_thread(_save))
+    def _log_failure(task: asyncio.Task) -> None:
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc:
+            logger.warning("Background save failed: %s", exc)
+
+    task = asyncio.create_task(asyncio.to_thread(_save))
+    task.add_done_callback(_log_failure)
 
 
 @router.post("/chat")
@@ -89,8 +114,12 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
     session_id = body.session_id or str(uuid4())
     if not message:
         return {"response": "Please send a message so I can help.", "session_id": session_id}
+    if not body.uid:
+        return {"response": "Authentication required.", "session_id": session_id}
 
     try:
+        await verify_request_uid(request, body.uid, required=False)
+        check_uid_rate_limit(body.uid)
         history, user_context = await asyncio.gather(
             get_history(body.uid, session_id, limit=10),
             get_user_context(body.uid),
@@ -106,16 +135,12 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
         )
         response = agent_result["response"]
         _save_chat_messages_task(body.uid, session_id, message, response, agent_result.get("tools_called", []))
-        await asyncio.gather(
-            save_turn(body.uid, session_id, "user", message),
-            save_turn(body.uid, session_id, "assistant", response),
-        )
         return {
             "response": response,
             "session_id": session_id,
             "metadata": {
                 "model": settings.openai_chat_model,
-                "toolsAvailable": 8,
+                "toolsAvailable": len(list_mcp_tools()),
                 "toolsCalled": agent_result["tools_called"],
                 "toolCount": agent_result["tool_count"],
                 "cached": False,
@@ -147,10 +172,15 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
         if not message:
             yield _sse_event({"type": "done", "response": "Please send a message so I can help.", "session_id": session_id})
             return
+        if not body.uid:
+            yield _sse_event({"type": "done", "response": "Authentication required.", "session_id": session_id})
+            return
 
         final_response = "Sorry, I'm having trouble connecting. Please try again."
         tools_called: list[str] = []
         try:
+            await verify_request_uid(request, body.uid, required=False)
+            check_uid_rate_limit(body.uid)
             history, user_context = await asyncio.gather(
                 get_history(body.uid, session_id, limit=10),
                 get_user_context(body.uid),
@@ -172,10 +202,10 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
                 yield _sse_event(event)
 
             _save_chat_messages_task(body.uid, session_id, message, final_response, tools_called)
-            await asyncio.gather(
-                save_turn(body.uid, session_id, "user", message),
-                save_turn(body.uid, session_id, "assistant", final_response),
-            )
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else "Request failed."
+            yield _sse_event({"type": "error", "message": detail})
+            yield _sse_event({"type": "done", "response": detail, "session_id": session_id})
         except Exception as exc:
             logger.warning("Chat stream failed gracefully: %s", exc)
             yield _sse_event({"type": "error", "message": "Sorry, I'm having trouble connecting. Please try again."})
