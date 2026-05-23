@@ -20,6 +20,7 @@ def _real_ip(request: Request) -> str:
 limiter = Limiter(key_func=_real_ip)
 
 _uid_windows: dict[str, Deque[float]] = defaultdict(deque)
+_MAX_UID_WINDOWS = 10_000
 
 
 def check_uid_rate_limit(uid: str, *, limit: int = 20, window_seconds: int = 60) -> None:
@@ -37,3 +38,7 @@ def check_uid_rate_limit(uid: str, *, limit: int = 20, window_seconds: int = 60)
     if len(events) >= limit:
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
     events.append(now)
+
+    if len(_uid_windows) > _MAX_UID_WINDOWS:
+        oldest_key = next(iter(_uid_windows))
+        del _uid_windows[oldest_key]

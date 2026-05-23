@@ -411,7 +411,7 @@ async def validate_coupon(request: Request, body: ValidateCouponRequest):
             raise HTTPException(status_code=400, detail="Coupon is disabled")
 
         expires_at = data.get("expiresAt")
-        if expires_at and expires_at.timestamp() < __import__("time").time():
+        if expires_at and expires_at.timestamp() < time.time():
             raise HTTPException(status_code=400, detail="Coupon has expired")
 
         max_uses = data.get("maxUses")
@@ -565,8 +565,13 @@ async def admin_send_notification(
             return {"status": "success", "sent": 1}
 
         users = list(db.collection("users").stream())
-        for user in users:
-            db.collection("users").document(user.id).collection("notifications").add(notif_data)
+        batch_size = 499
+        for index in range(0, len(users), batch_size):
+            batch = db.batch()
+            for user in users[index : index + batch_size]:
+                ref = db.collection("users").document(user.id).collection("notifications").document()
+                batch.set(ref, notif_data)
+            batch.commit()
         return {"status": "success", "sent": len(users)}
 
     try:
@@ -660,16 +665,14 @@ async def uptime_check():
 
 
 @app.get("/ai/status")
-async def ai_status():
+async def ai_status(admin_uid: str = Depends(require_admin)):
     """Return the current AI support system status."""
     tool_list = list_mcp_tools()
-    tool_names = [tool.get("function", tool)["name"] for tool in tool_list]
     return {
         "status": "ready",
         "model": settings.openai_chat_model,
         "rag": "ChromaDB semantic search with OpenAI embeddings",
-        "tools": tool_names,
-        "tool_count": len(tool_names),
+        "tool_count": len(tool_list),
         "rate_limit": "20/minute on chat; 10/minute on admin routes",
     }
 

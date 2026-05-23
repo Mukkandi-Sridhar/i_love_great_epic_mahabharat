@@ -13,12 +13,13 @@ from backend.rag.ingest import POLICY_COLLECTION, PRODUCT_COLLECTION, _get_chrom
 
 logger = logging.getLogger("ChatbotBackend.rag.retrieve")
 MIN_SCORE = 0.30
+_embed_cache: dict[str, list[float]] = {}
+_embed_pending: dict[str, asyncio.Task[list[float] | None]] = {}
+_EMBED_CACHE_MAX = 32
 
 
-async def _embed_query(query: str) -> list[float] | None:
-    """Embed a user query, returning None on any provider error."""
-    if not query.strip() or not settings.openai_api_key:
-        return None
+async def _fetch_embedding(query: str) -> list[float] | None:
+    """Fetch a query embedding from OpenAI, returning None on provider errors."""
     try:
         client = _get_openai_client()
         response = await client.embeddings.create(
@@ -29,6 +30,34 @@ async def _embed_query(query: str) -> list[float] | None:
     except Exception as exc:
         logger.warning("Query embedding failed: %s", exc)
         return None
+
+
+async def _embed_query(query: str) -> list[float] | None:
+    """Embed a user query with a small module-level cache."""
+    normalized = query.strip()
+    if not normalized or not settings.openai_api_key:
+        return None
+
+    key = normalized.lower()
+    if key in _embed_cache:
+        return _embed_cache[key]
+
+    task = _embed_pending.get(key)
+    if task is None:
+        task = asyncio.create_task(_fetch_embedding(normalized))
+        _embed_pending[key] = task
+
+    try:
+        embedding = await task
+    finally:
+        if _embed_pending.get(key) is task:
+            del _embed_pending[key]
+
+    if embedding:
+        if key not in _embed_cache and len(_embed_cache) >= _EMBED_CACHE_MAX:
+            _embed_cache.pop(next(iter(_embed_cache)))
+        _embed_cache[key] = embedding
+    return embedding
 
 
 def _query_collection(name: str, embedding: list[float], n_results: int) -> dict[str, Any]:

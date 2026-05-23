@@ -94,14 +94,13 @@ async def get_history(uid: str, session_id: str, limit: int = 10) -> list[dict]:
         message_docs = list(messages_query.stream())
         if message_docs:
             message_docs.reverse()
-            return [
-                {
-                    "role": (doc.to_dict() or {}).get("role", "user"),
-                    "content": (doc.to_dict() or {}).get("content", ""),
-                }
-                for doc in message_docs
-                if (doc.to_dict() or {}).get("content")
-            ]
+            result = []
+            for doc in message_docs:
+                data = doc.to_dict() or {}
+                content = data.get("content", "")
+                if content:
+                    result.append({"role": data.get("role", "user"), "content": content})
+            return result
         return []
 
     try:
@@ -169,14 +168,26 @@ async def get_user_context(uid: str) -> dict:
         return purchases
 
     def _open_tickets() -> int:
-        docs = (
-            db.collection("users")
-            .document(uid)
-            .collection("tickets")
-            .where("status", "==", "open")
-            .stream()
-        )
-        return sum(1 for _ in docs)
+        try:
+            aggregate_query = (
+                db.collection("users")
+                .document(uid)
+                .collection("tickets")
+                .where("status", "==", "open")
+                .count()
+            )
+            result = aggregate_query.get()
+            return result[0][0].value
+        except Exception:
+            docs = (
+                db.collection("users")
+                .document(uid)
+                .collection("tickets")
+                .where("status", "==", "open")
+                .limit(50)
+                .stream()
+            )
+            return sum(1 for _ in docs)
 
     try:
         recent_orders, purchases, open_tickets_count = await asyncio.gather(

@@ -11,13 +11,12 @@ from fastapi.responses import StreamingResponse
 from firebase_admin import firestore
 from pydantic import BaseModel, field_validator
 
-from backend.agent.brain import run_agent, run_agent_streaming
+from backend.agent.brain import _TOOL_COUNT, run_agent, run_agent_streaming
 from backend.agent.memory import append_fallback_turns, get_history, get_user_context
 from backend.core.auth import verify_request_uid
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
 from backend.core.rate_limit import check_uid_rate_limit, limiter
-from backend.mcp.server import list_tools as list_mcp_tools
 
 
 logger = logging.getLogger("ChatbotBackend.api.chat")
@@ -78,21 +77,27 @@ def _save_chat_messages_task(uid: str, session_id: str, user_message: str, assis
     def _save() -> None:
         session_ref = db.collection("users").document(uid).collection("chat_sessions").document(session_id)
         session_ref.set({"updatedAt": firestore.SERVER_TIMESTAMP, "uid": uid}, merge=True)
-        session_ref.collection("messages").add(
+        batch = db.batch()
+        user_ref = session_ref.collection("messages").document()
+        assistant_ref = session_ref.collection("messages").document()
+        batch.set(
+            user_ref,
             {
                 "role": "user",
                 "content": user_message,
                 "timestamp": firestore.SERVER_TIMESTAMP,
-            }
+            },
         )
-        session_ref.collection("messages").add(
+        batch.set(
+            assistant_ref,
             {
                 "role": "assistant",
                 "content": assistant_message,
                 "tools_called": tools_called,
                 "timestamp": firestore.SERVER_TIMESTAMP,
-            }
+            },
         )
+        batch.commit()
 
     def _log_failure(task: asyncio.Task) -> None:
         try:
@@ -118,7 +123,7 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
         return {"response": "Authentication required.", "session_id": session_id}
 
     try:
-        await verify_request_uid(request, body.uid, required=False)
+        await verify_request_uid(request, body.uid, required=True)
         check_uid_rate_limit(body.uid)
         history, user_context = await asyncio.gather(
             get_history(body.uid, session_id, limit=10),
@@ -140,7 +145,7 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
             "session_id": session_id,
             "metadata": {
                 "model": settings.openai_chat_model,
-                "toolsAvailable": len(list_mcp_tools()),
+                "toolsAvailable": _TOOL_COUNT,
                 "toolsCalled": agent_result["tools_called"],
                 "toolCount": agent_result["tool_count"],
                 "cached": False,
@@ -179,7 +184,7 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
         final_response = "Sorry, I'm having trouble connecting. Please try again."
         tools_called: list[str] = []
         try:
-            await verify_request_uid(request, body.uid, required=False)
+            await verify_request_uid(request, body.uid, required=True)
             check_uid_rate_limit(body.uid)
             history, user_context = await asyncio.gather(
                 get_history(body.uid, session_id, limit=10),

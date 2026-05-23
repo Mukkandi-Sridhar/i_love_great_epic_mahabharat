@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -25,9 +26,9 @@ TOOL_MESSAGES = {
 }
 
 
-def _tool_schema() -> list[dict]:
-    """Convert internal MCP tool specs to OpenAI tool format."""
-    return [{"type": "function", "function": tool} for tool in list_tools()]
+_TOOLS = list_tools()
+_TOOL_SCHEMA: list[dict] = [{"type": "function", "function": tool} for tool in _TOOLS]
+_TOOL_COUNT: int = len(_TOOLS)
 
 
 def _summarize_context(ctx: dict) -> str:
@@ -138,8 +139,13 @@ def _build_messages(
     return messages, message
 
 
-async def _run_tool_loop(messages: list[dict], tools: list[dict], client: Any, session_id: str):
-    """Run OpenAI tool rounds and yield each assistant decision."""
+async def _run_tool_loop(
+    messages: list[dict],
+    tools: list[dict],
+    client: Any,
+    session_id: str,
+):
+    """Run OpenAI tool rounds and yield tagged tool events or final response."""
     tools_called: list[str] = []
     for _ in range(settings.max_tool_rounds):
         completion = await client.chat.completions.create(
@@ -152,14 +158,31 @@ async def _run_tool_loop(messages: list[dict], tools: list[dict], client: Any, s
         tool_calls = assistant_message.tool_calls or []
 
         if not tool_calls:
-            yield assistant_message, tool_calls, list(tools_called)
+            yield ("done", assistant_message, list(tools_called))
             return
 
         messages.append(assistant_message.model_dump(exclude_none=True))
+        start_events = []
+        tasks = []
         for tool_call in tool_calls:
             tool_name = tool_call.function.name
+            start_events.append(
+                {
+                    "type": "tool_start",
+                    "tool": tool_name,
+                    "message": TOOL_MESSAGES.get(tool_name, f"Processing {tool_name}..."),
+                }
+            )
+            tasks.append(process_tool_call(tool_name, tool_call.function.arguments))
+
+        for event in start_events:
+            yield ("tool_event", event)
+
+        results = await asyncio.gather(*tasks)
+
+        for tool_call, result in zip(tool_calls, results):
+            tool_name = tool_call.function.name
             tools_called.append(tool_name)
-            result = await process_tool_call(tool_name, tool_call.function.arguments)
             messages.append(
                 {
                     "role": "tool",
@@ -168,7 +191,7 @@ async def _run_tool_loop(messages: list[dict], tools: list[dict], client: Any, s
                     "content": result,
                 }
             )
-        yield assistant_message, tool_calls, list(tools_called)
+            yield ("tool_event", {"type": "tool_end", "tool": tool_name})
 
     logger.warning("Agent tool loop exhausted for session %s", session_id)
 
@@ -232,16 +255,18 @@ async def run_agent(
         user_context=user_context,
         first_message=len(history) == 0,
     )
-    tools = _tool_schema()
+    tools = _TOOL_SCHEMA
 
     try:
-        async for assistant_message, tool_calls, tools_called in _run_tool_loop(messages, tools, client, session_id):
-            if not tool_calls:
-                return {
-                    "response": assistant_message.content or "I can help with that. Please share one more detail.",
-                    "tools_called": tools_called,
-                    "tool_count": len(tools_called),
-                }
+        async for event in _run_tool_loop(messages, tools, client, session_id):
+            if event[0] != "done":
+                continue
+            _, assistant_message, tools_called = event
+            return {
+                "response": assistant_message.content or "I can help with that. Please share one more detail.",
+                "tools_called": tools_called,
+                "tool_count": len(tools_called),
+            }
 
         ticket_id = await _create_escalation_ticket(
             uid=uid,
@@ -296,28 +321,20 @@ async def run_agent_streaming(
         user_context=user_context,
         first_message=len(history) == 0,
     )
-    tools = _tool_schema()
+    tools = _TOOL_SCHEMA
 
     try:
-        async for assistant_message, tool_calls, tools_called in _run_tool_loop(messages, tools, client, session_id):
-            if not tool_calls:
-                yield {"type": "generating", "message": "Generating response..."}
-                parts: list[str] = []
-                stream = await client.chat.completions.create(
-                    model=settings.openai_chat_model,
-                    messages=messages,
-                    stream=True,
-                )
-                async for chunk in stream:
-                    if not chunk.choices:
-                        continue
-                    delta = chunk.choices[0].delta.content or ""
-                    if not delta:
-                        continue
-                    parts.append(delta)
-                    yield {"type": "token", "delta": delta}
+        async for event in _run_tool_loop(messages, tools, client, session_id):
+            if event[0] == "tool_event":
+                yield event[1]
+                continue
 
-                response = "".join(parts) or assistant_message.content or "I can help with that."
+            _, assistant_message, tools_called = event
+            if event[0] == "done":
+                yield {"type": "generating", "message": "Generating response..."}
+                response = assistant_message.content or "I can help with that."
+                for char in response:
+                    yield {"type": "token", "delta": char}
                 yield {
                     "type": "done",
                     "response": response,
@@ -325,15 +342,6 @@ async def run_agent_streaming(
                     "tool_count": len(tools_called),
                 }
                 return
-
-            for tool_call in tool_calls:
-                tool_name = tool_call.function.name
-                yield {
-                    "type": "tool_start",
-                    "tool": tool_name,
-                    "message": TOOL_MESSAGES.get(tool_name, f"Processing {tool_name}..."),
-                }
-                yield {"type": "tool_end", "tool": tool_name}
 
         ticket_id = await _create_escalation_ticket(
             uid=uid,

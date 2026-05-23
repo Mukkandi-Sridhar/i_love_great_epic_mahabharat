@@ -60,6 +60,11 @@ async def require_admin(request: Request) -> str:
     if _admin_cache.get(uid, 0) > now:
         return uid
 
+    if len(_admin_cache) > 200:
+        expired = [key for key, value in _admin_cache.items() if value <= now]
+        for key in expired:
+            del _admin_cache[key]
+
     def _is_admin() -> bool:
         if db.collection("admins").document(uid).get().exists:
             return True

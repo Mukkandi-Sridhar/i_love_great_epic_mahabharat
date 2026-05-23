@@ -265,18 +265,20 @@ async def ingest_policies() -> None:
 
 def _product_text(product: dict[str, Any]) -> str:
     """Create a searchable text representation of a product."""
-    raw_highlights = product.get("highlights", [])
+    raw_highlights = product.get("highlights") or []
+    if not isinstance(raw_highlights, list):
+        raw_highlights = [raw_highlights]
     highlights = ", ".join(
         item.get("text", "") if isinstance(item, dict) else str(item)
         for item in raw_highlights
     )
     return (
-        f"Product ID: {product['id']}\n"
-        f"Title: {product['title']}\n"
-        f"Type: {product['type']}\n"
-        f"Price: Rs {product['price']}\n"
-        f"Language: {product['language']}\n"
-        f"Description: {product['description']}\n"
+        f"Product ID: {product.get('id', 'unknown')}\n"
+        f"Title: {product.get('title', 'Untitled')}\n"
+        f"Type: {product.get('type', 'unknown')}\n"
+        f"Price: Rs {product.get('price', 0)}\n"
+        f"Language: {product.get('language', 'Unknown')}\n"
+        f"Description: {product.get('description', '')}\n"
         f"Highlights: {highlights}"
     )
 
@@ -308,19 +310,19 @@ async def ingest_products() -> None:
         collection = await asyncio.to_thread(_reset_collection, client, PRODUCT_COLLECTION)
         await asyncio.to_thread(
             collection.upsert,
-            ids=[f"product-{product['id']}" for product in products],
+            ids=[f"product-{product.get('id', str(idx))}" for idx, product in enumerate(products)],
             documents=texts,
             embeddings=embeddings,
             metadatas=[
                 {
-                    "product_id": product["id"],
-                    "type": product["type"],
-                    "price": product["price"],
-                    "language": product["language"],
-                    "title": product["title"],
+                    "product_id": product.get("id", str(idx)),
+                    "type": product.get("type", "unknown"),
+                    "price": product.get("price", 0),
+                    "language": product.get("language", "Unknown"),
+                    "title": product.get("title", "Untitled"),
                     "source_hash": source_hash,
                 }
-                for product in products
+                for idx, product in enumerate(products)
             ],
         )
         logger.info("Product RAG ingestion complete (%s products).", len(products))
