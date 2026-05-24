@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import firestore
 from pydantic import BaseModel
@@ -24,13 +24,14 @@ if str(PROJECT_ROOT) not in sys.path:
 
 load_dotenv(os.path.join(Path(__file__).resolve().parent, ".env"))
 
+from backend.api.admin import router as admin_router
 from backend.api.chat import router as chat_router
 from backend.api.webhook import router as webhook_router
-from backend.core.auth import require_admin, verify_request_uid
+from backend.core.auth import verify_request_uid
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
 from backend.core.rate_limit import limiter
-from backend.mcp.server import list_tools as list_mcp_tools, warm_tool_cache
+from backend.mcp.server import warm_tool_cache
 from backend.rag.ingest import close_chroma, ingest_policies, ingest_products
 
 logging.basicConfig(
@@ -95,6 +96,7 @@ async def add_security_headers(request: Request, call_next):
 
 app.include_router(chat_router)
 app.include_router(webhook_router)
+app.include_router(admin_router)
 
 db = get_firestore_client()
 
@@ -130,36 +132,6 @@ class CreateRazorpayOrderRequest(BaseModel):
 class ValidateCouponRequest(BaseModel):
     code: str
     amount: float
-
-
-class GrantAccessRequest(BaseModel):
-    uid: str
-    email: str
-    product_id: str
-    product_type: str
-    title: str
-    price: float
-
-
-class RevokeAccessRequest(BaseModel):
-    uid: str
-    product_id: str
-
-
-class UpdateOrderStatusRequest(BaseModel):
-    status: str
-    tracking_number: Optional[str] = None
-    admin_note: Optional[str] = None
-
-
-class SendNotificationRequest(BaseModel):
-    title: str
-    message: str
-    uid: Optional[str] = None
-
-
-class AdminReplyRequest(BaseModel):
-    reply: str
 
 
 def _verify_razorpay_signature(
@@ -250,10 +222,18 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         if not transaction_id:
             transaction_id = f"txn_test_{db.collection('transactions_index').document().id}"
         transaction_index_ref = db.collection("transactions_index").document(transaction_id)
-        if transaction_index_ref.get().exists:
-            raise HTTPException(status_code=409, detail="Transaction already processed")
+
+        @firestore.transactional
+        def _claim_transaction(transaction, ref):
+            snap = ref.get(transaction=transaction)
+            if snap.exists:
+                raise HTTPException(status_code=409, detail="Transaction already processed")
+            transaction.set(ref, {"claimed": True, "claimedAt": firestore.SERVER_TIMESTAMP})
+
+        _claim_transaction(db.transaction(), transaction_index_ref)
 
         transaction_details = {
+            **transaction_details,
             "transaction_id": transaction_id,
             "gateway": body.payment_mode or "test_checkout",
             "status": "captured" if body.test_payment else "paid",
@@ -261,7 +241,6 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             "razorpay_order_id": razorpay_order_id,
             "razorpay_payment_id": razorpay_payment_id,
             "razorpay_signature": razorpay_signature,
-            **transaction_details,
         }
 
         product_ref = None
@@ -292,7 +271,9 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
                 used_count = data.get("usedCount", 0)
                 if max_uses and used_count >= max_uses:
                     return 0
-                discount = (price * data["value"]) / 100 if data["type"] == "percent" else data["value"]
+                coupon_type = data.get("type", "fixed")
+                coupon_value = float(data.get("value", 0))
+                discount = (price * coupon_value / 100) if coupon_type == "percent" else coupon_value
                 transaction.update(ref, {"usedCount": firestore.Increment(1)})
                 return discount
 
@@ -419,18 +400,17 @@ async def validate_coupon(request: Request, body: ValidateCouponRequest):
         if max_uses and used_count >= max_uses:
             raise HTTPException(status_code=400, detail="Coupon usage limit reached")
 
-        if data["type"] == "percent":
-            discount = (body.amount * data["value"]) / 100
-        else:
-            discount = data["value"]
+        coupon_type = data.get("type", "fixed")
+        coupon_value = data.get("value", 0)
+        discount = (body.amount * coupon_value / 100) if coupon_type == "percent" else coupon_value
 
         return {
             "valid": True,
             "discount": discount,
             "final_amount": max(0, body.amount - discount),
             "code": body.code.upper(),
-            "type": data["type"],
-            "value": data["value"],
+            "type": coupon_type,
+            "value": coupon_value,
         }
 
     try:
@@ -442,218 +422,6 @@ async def validate_coupon(request: Request, body: ValidateCouponRequest):
         raise HTTPException(status_code=500, detail="Validation error")
 
 
-@app.post("/admin/rag/refresh")
-@limiter.limit("5/minute")
-async def refresh_rag(request: Request, admin_uid: str = Depends(require_admin)):
-    """Refresh the product RAG index from Firestore."""
-    await ingest_products()
-    return {"status": "refreshed"}
-
-
-@app.post("/admin/grant-access")
-@limiter.limit("10/minute")
-async def admin_grant_access(request: Request, body: GrantAccessRequest, admin_uid: str = Depends(require_admin)):
-    """Manually grant product access to a user."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    def _write_access() -> dict:
-        db.collection("users").document(body.uid).collection("purchases").document(body.product_id).set(
-            {
-                "productId": body.product_id,
-                "type": body.product_type,
-                "title": body.title,
-                "price": body.price,
-                "grantedBy": "admin",
-                "status": "active",
-                "accessStatus": "active",
-                "source": "admin",
-                "hasDownloadLink": False,
-                "createdAt": firestore.SERVER_TIMESTAMP,
-                "updatedAt": firestore.SERVER_TIMESTAMP,
-            }
-        )
-        db.collection("users").document(body.uid).collection("notifications").add(
-            {
-                "title": "Access Granted",
-                "message": f"An administrator has granted you access to: {body.title}",
-                "type": "system",
-                "createdAt": firestore.SERVER_TIMESTAMP,
-                "read": False,
-            }
-        )
-        return {"status": "success"}
-
-    try:
-        return await asyncio.to_thread(_write_access)
-    except Exception as exc:
-        logger.error("Manual grant failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Grant failed")
-
-
-@app.post("/admin/revoke-access")
-@limiter.limit("10/minute")
-async def admin_revoke_access(request: Request, body: RevokeAccessRequest, admin_uid: str = Depends(require_admin)):
-    """Manually revoke product access from a user."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    def _delete_access() -> dict:
-        db.collection("users").document(body.uid).collection("purchases").document(body.product_id).delete()
-        return {"status": "success"}
-
-    try:
-        return await asyncio.to_thread(_delete_access)
-    except Exception as exc:
-        logger.error("Revoke failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Revoke failed")
-
-
-@app.patch("/admin/orders/{order_id}")
-@limiter.limit("10/minute")
-async def admin_update_order(
-    request: Request,
-    order_id: str,
-    body: UpdateOrderStatusRequest,
-    admin_uid: str = Depends(require_admin),
-):
-    """Update order status and tracking information."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    def _update_order() -> dict:
-        update_data = {
-            "status": body.status,
-            "updatedAt": firestore.SERVER_TIMESTAMP,
-        }
-        if body.tracking_number:
-            update_data["trackingNumber"] = body.tracking_number
-        if body.admin_note:
-            update_data["adminNote"] = body.admin_note
-
-        db.collection("orders_index").document(order_id).update(update_data)
-        return {"status": "success"}
-
-    try:
-        return await asyncio.to_thread(_update_order)
-    except Exception as exc:
-        logger.error("Order update failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Update failed")
-
-
-@app.post("/admin/send-notification")
-@limiter.limit("10/minute")
-async def admin_send_notification(
-    request: Request,
-    body: SendNotificationRequest,
-    admin_uid: str = Depends(require_admin),
-):
-    """Send a notification to one user or broadcast to all users."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    def _send_notification() -> dict:
-        notif_data = {
-            "title": body.title,
-            "message": body.message,
-            "createdAt": firestore.SERVER_TIMESTAMP,
-            "read": False,
-        }
-
-        if body.uid:
-            db.collection("users").document(body.uid).collection("notifications").add(notif_data)
-            return {"status": "success", "sent": 1}
-
-        users = list(db.collection("users").stream())
-        batch_size = 499
-        for index in range(0, len(users), batch_size):
-            batch = db.batch()
-            for user in users[index : index + batch_size]:
-                ref = db.collection("users").document(user.id).collection("notifications").document()
-                batch.set(ref, notif_data)
-            batch.commit()
-        return {"status": "success", "sent": len(users)}
-
-    try:
-        return await asyncio.to_thread(_send_notification)
-    except Exception as exc:
-        logger.error("Notification failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Notification failed")
-
-
-@app.patch("/admin/users/{uid}/block")
-@limiter.limit("10/minute")
-async def admin_block_user(request: Request, uid: str, blocked: bool, admin_uid: str = Depends(require_admin)):
-    """Block or unblock a user."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    def _set_block_status() -> dict:
-        db.collection("users").document(uid).update(
-            {
-                "blocked": blocked,
-                "updatedAt": firestore.SERVER_TIMESTAMP,
-            }
-        )
-        return {"status": "success"}
-
-    try:
-        return await asyncio.to_thread(_set_block_status)
-    except Exception as exc:
-        logger.error("User block failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Block failed")
-
-
-@app.post("/admin/tickets/{ticket_id}/reply")
-@limiter.limit("10/minute")
-async def admin_reply_ticket(
-    request: Request,
-    ticket_id: str,
-    body: AdminReplyRequest,
-    admin_uid: str = Depends(require_admin),
-):
-    """Reply to a support ticket, mark it resolved, and notify the user."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    def _reply_ticket() -> dict:
-        ticket_ref = db.collection("tickets").document(ticket_id)
-        ticket = ticket_ref.get()
-        if not ticket.exists:
-            raise HTTPException(status_code=404, detail="Ticket not found")
-
-        ticket_data = ticket.to_dict() or {}
-        update_data = {
-            "adminReply": body.reply,
-            "status": "resolved",
-            "resolvedAt": firestore.SERVER_TIMESTAMP,
-        }
-        ticket_ref.update(update_data)
-
-        uid = ticket_data.get("uid")
-        if uid:
-            db.collection("users").document(uid).collection("tickets").document(ticket_id).set(update_data, merge=True)
-            db.collection("users").document(uid).collection("notifications").add(
-                {
-                    "title": "Support Ticket Updated",
-                    "message": body.reply,
-                    "type": "support",
-                    "createdAt": firestore.SERVER_TIMESTAMP,
-                    "read": False,
-                }
-            )
-
-        return {"status": "success"}
-
-    try:
-        return await asyncio.to_thread(_reply_ticket)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Ticket reply failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Ticket reply failed")
-
-
 @app.get("/")
 async def health():
     return {"status": "Support Bot Backend Running"}
@@ -662,19 +430,6 @@ async def health():
 @app.get("/uptime")
 async def uptime_check():
     return "OK"
-
-
-@app.get("/ai/status")
-async def ai_status(admin_uid: str = Depends(require_admin)):
-    """Return the current AI support system status."""
-    tool_list = list_mcp_tools()
-    return {
-        "status": "ready",
-        "model": settings.openai_chat_model,
-        "rag": "ChromaDB semantic search with OpenAI embeddings",
-        "tool_count": len(tool_list),
-        "rate_limit": "20/minute on chat; 10/minute on admin routes",
-    }
 
 
 @app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)

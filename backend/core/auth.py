@@ -43,6 +43,25 @@ async def verify_request_uid(request: Request, uid: str, *, required: bool = Fal
     return decoded
 
 
+async def check_user_not_blocked(uid: str) -> None:
+    """Raise 403 if the user is blocked in Firestore."""
+    db = get_firestore_client()
+    if db is None:
+        return
+
+    def _read() -> bool:
+        doc = db.collection("users").document(uid).get()
+        return (doc.to_dict() or {}).get("blocked", False) if doc.exists else False
+
+    try:
+        if await asyncio.to_thread(_read):
+            raise HTTPException(status_code=403, detail="Account is blocked")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+
 async def require_admin(request: Request) -> str:
     """Verify a Firebase ID token and require an admin marker in Firestore."""
     authorization = request.headers.get("Authorization", "")
@@ -66,10 +85,18 @@ async def require_admin(request: Request) -> str:
             del _admin_cache[key]
 
     def _is_admin() -> bool:
-        if db.collection("admins").document(uid).get().exists:
-            return True
-        user_doc = db.collection("users").document(uid).get()
-        return user_doc.exists and (user_doc.to_dict() or {}).get("isAdmin") is True
+        refs = [
+            db.collection("admins").document(uid),
+            db.collection("users").document(uid),
+        ]
+        for doc in db.get_all(refs):
+            if not doc.exists:
+                continue
+            if doc.reference.parent.id == "admins":
+                return True
+            if (doc.to_dict() or {}).get("isAdmin") is True:
+                return True
+        return False
 
     if not await asyncio.to_thread(_is_admin):
         raise HTTPException(status_code=403, detail="Not an admin")

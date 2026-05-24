@@ -13,7 +13,7 @@ from pydantic import BaseModel, field_validator
 
 from backend.agent.brain import _TOOL_COUNT, run_agent, run_agent_streaming
 from backend.agent.memory import append_fallback_turns, get_history, get_user_context
-from backend.core.auth import verify_request_uid
+from backend.core.auth import check_user_not_blocked, verify_request_uid
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
 from backend.core.rate_limit import check_uid_rate_limit, limiter
@@ -124,6 +124,7 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
 
     try:
         await verify_request_uid(request, body.uid, required=True)
+        await check_user_not_blocked(body.uid)
         check_uid_rate_limit(body.uid)
         history, user_context = await asyncio.gather(
             get_history(body.uid, session_id, limit=10),
@@ -185,6 +186,7 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
         tools_called: list[str] = []
         try:
             await verify_request_uid(request, body.uid, required=True)
+            await check_user_not_blocked(body.uid)
             check_uid_rate_limit(body.uid)
             history, user_context = await asyncio.gather(
                 get_history(body.uid, session_id, limit=10),
