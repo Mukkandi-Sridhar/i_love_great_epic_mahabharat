@@ -15,23 +15,22 @@ interface IntroOverlayProps {
   durationMs?: number;
 }
 
-const IntroOverlay = ({ onFinish, durationMs = 6000 }: IntroOverlayProps) => {
+const IntroOverlay = ({ onFinish, durationMs = 3800 }: IntroOverlayProps) => {
   const [phase, setPhase] = useState(0);
   const [isExiting, setIsExiting] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
 
-    // Phase Choreography (Optimized for speed)
     const timers = [
-      setTimeout(() => setPhase(1), 50),    // Ambient bloom (almost instant)
-      setTimeout(() => setPhase(2), 500),   // Logo + Subtle ring (at 0.5s)
-      setTimeout(() => setPhase(3), 1200),  // Subtitle (at 1.2s)
-      setTimeout(() => setPhase(4), 1800),  // MAHABHARAT Light Reveal (at 1.8s)
+      setTimeout(() => setPhase(1), 30),
+      setTimeout(() => setPhase(2), 300),
+      setTimeout(() => setPhase(3), 700),
+      setTimeout(() => setPhase(4), 1100),
       setTimeout(() => {
         setIsExiting(true);
-        setTimeout(onFinish, 1000);
-      }, durationMs - 1000)
+        setTimeout(onFinish, 800);
+      }, durationMs - 800)
     ];
 
     if ((window as any).playBackgroundMusic) (window as any).playBackgroundMusic();
@@ -62,9 +61,10 @@ const IntroOverlay = ({ onFinish, durationMs = 6000 }: IntroOverlayProps) => {
             animate={{ opacity: phase >= 1 ? 1 : 0, scale: phase >= 1 ? 1 : 0.8 }}
             transition={{ duration: 2, ease: "easeOut" }}
             className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none"
+            style={{ willChange: "opacity, transform" }}
           >
             {/* Single golden core light */}
-            <div className="w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full bg-[radial-gradient(circle,rgba(255,190,0,0.1)_0%,transparent_70%)] blur-[80px]" />
+            <div className="w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full bg-[radial-gradient(circle,rgba(255,190,0,0.1)_0%,transparent_70%)] blur-[40px] md:blur-[80px]" />
           </motion.div>
 
           {/* ══ Content Structure ══ */}
@@ -106,30 +106,27 @@ const IntroOverlay = ({ onFinish, durationMs = 6000 }: IntroOverlayProps) => {
 
               {/* Main Title — MAHABHARAT (Light Reveal) */}
               <div className="relative">
-                <motion.h1
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: phase >= 4 ? 1 : 0 }}
-                  transition={{ duration: 1.5, ease: "linear" }}
-                  className="text-5xl md:text-8xl lg:text-9xl font-['Cinzel'] font-bold tracking-tight text-whiteSelection"
+                <h1
+                  className="text-5xl md:text-8xl lg:text-9xl font-['Cinzel'] font-bold tracking-tight transition-opacity duration-300"
                   style={{
-                    background: "linear-gradient(to right, #ffffff00 0%, #ffffff 50%, #ffffff00 100%)",
-                    backgroundSize: "200% 100%",
+                    opacity: phase >= 4 ? 1 : 0,
+                    background: "linear-gradient(90deg, #ffffff00 0%, #ffffffcc 40%, #ffffff 50%, #ffffffcc 60%, #ffffff00 100%)",
+                    backgroundSize: "300% 100%",
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
                     backgroundClip: "text",
-                    // The "Light Sweep" effect
-                    animation: phase >= 4 ? "light-sweep 1.4s cubic-bezier(0.25, 1, 0.5, 1) forwards" : "none"
+                    animation: phase >= 4 ? "light-sweep 1.6s cubic-bezier(0.25, 1, 0.5, 1) forwards" : "none"
                   }}
                 >
                   {TITLE}
-                </motion.h1>
+                </h1>
 
                 {/* Fallback for browsers that don't support text mask perfectly */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: phase >= 4 ? 1 : 0 }}
                   transition={{ duration: 2, delay: 0.5 }}
-                  className="absolute inset-0 flex items-center justify-center -z-1"
+                  className="absolute inset-0 flex items-center justify-center -z-10"
                 >
                   <h1 className="text-5xl md:text-8xl lg:text-9xl font-['Cinzel'] font-bold tracking-tight text-white/5 blur-sm select-none">
                     {TITLE}
@@ -148,24 +145,24 @@ const IntroOverlay = ({ onFinish, durationMs = 6000 }: IntroOverlayProps) => {
               </motion.p>
             </div>
 
-            {/* Precision Progress Indicator */}
-            <div className="absolute bottom-[-100px] flex flex-col items-center gap-5">
-              <div className="w-40 h-[1.5px] bg-white/5 relative overflow-hidden rounded-full">
-                <motion.div
-                  initial={{ width: "0%" }}
-                  animate={{ width: "100%" }}
-                  transition={{ duration: (durationMs - 1000) / 1000, ease: "easeInOut" }}
-                  className="absolute inset-y-0 left-0 bg-white"
-                />
-              </div>
-              <motion.span
-                animate={{ opacity: [0.2, 0.4, 0.2] }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="text-[7px] tracking-[0.4em] text-white/40 uppercase"
-              >
-                Initializing
-              </motion.span>
+          </div>
+
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-50">
+            <div className="w-32 h-[1px] bg-white/10 relative overflow-hidden rounded-full">
+              <motion.div
+                initial={{ width: "0%" }}
+                animate={{ width: "100%" }}
+                transition={{ duration: (durationMs - 1000) / 1000, ease: "linear" }}
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-transparent via-white to-transparent"
+              />
             </div>
+            <motion.span
+              animate={{ opacity: [0.2, 0.5, 0.2] }}
+              transition={{ duration: 1.8, repeat: Infinity }}
+              className="text-[8px] tracking-[0.5em] text-white/30 uppercase font-mono"
+            >
+              Loading
+            </motion.span>
           </div>
 
           {/* Clean background — removed side vignettes */}
@@ -174,9 +171,9 @@ const IntroOverlay = ({ onFinish, durationMs = 6000 }: IntroOverlayProps) => {
           {/* Inline Styles for the Light Sweep */}
           <style>{`
             @keyframes light-sweep {
-              0% { background-position: -200% 0; opacity: 0; }
-              50% { opacity: 1; }
-              100% { background-position: 0% 0; opacity: 1; }
+              0% { background-position: 200% 0; opacity: 0; }
+              20% { opacity: 1; }
+              100% { background-position: -100% 0; opacity: 1; }
             }
           `}</style>
         </motion.div>

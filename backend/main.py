@@ -109,7 +109,16 @@ app.include_router(chat_router)
 app.include_router(webhook_router)
 app.include_router(admin_router)
 
-db = get_firestore_client()
+
+class _DuplicateTransaction(Exception):
+    pass
+
+
+def _db():
+    db = get_firestore_client()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    return db
 
 
 class CompleteOrderRequest(BaseModel):
@@ -205,11 +214,10 @@ async def create_razorpay_order(request: Request, body: CreateRazorpayOrderReque
 @limiter.limit("20/minute")
 async def complete_order(request: Request, body: CompleteOrderRequest):
     """Complete an order, apply a valid coupon, and grant product access."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
     await verify_request_uid(request, body.uid, required=True)
 
     def _write_order() -> dict:
+        db = _db()
         base_price = body.base_price
         final_amount = base_price
         discount_value = 0
@@ -238,10 +246,13 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         def _claim_transaction(transaction, ref):
             snap = ref.get(transaction=transaction)
             if snap.exists:
-                raise HTTPException(status_code=409, detail="Transaction already processed")
+                raise _DuplicateTransaction()
             transaction.set(ref, {"claimed": True, "claimedAt": firestore.SERVER_TIMESTAMP})
 
-        _claim_transaction(db.transaction(), transaction_index_ref)
+        try:
+            _claim_transaction(db.transaction(), transaction_index_ref)
+        except _DuplicateTransaction:
+            raise HTTPException(status_code=409, detail="Transaction already processed")
 
         transaction_details = {
             **transaction_details,
@@ -389,10 +400,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
 @limiter.limit("10/minute")
 async def validate_coupon(request: Request, body: ValidateCouponRequest):
     """Validate a coupon code and return the discount and final amount."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
     def _read_coupon() -> dict:
+        db = _db()
         coupon_ref = db.collection("coupons").document(body.code.upper())
         coupon = coupon_ref.get()
         if not coupon.exists:

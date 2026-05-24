@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query, startAfter } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ArrowLeft, Ban, ShieldCheck, Mail, Calendar, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,18 +20,27 @@ interface AdminUser {
     blocked?: boolean;
 }
 
+const PAGE_SIZE = 30;
+
 const AdminUsers = () => {
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
+    const [lastDoc, setLastDoc] = useState<any>(null);
+    const [hasMore, setHasMore] = useState(true);
     const { toast } = useToast();
     usePageTitle("Admin Users");
 
-    const loadUsers = async () => {
+    const loadUsers = async (append = false) => {
         setLoading(true);
         try {
-            const snap = await getDocs(query(collection(db, "users"), orderBy("createdAt", "desc")));
-            setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AdminUser)));
+            let q = query(collection(db, "users"), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
+            if (append && lastDoc) q = query(q, startAfter(lastDoc));
+            const snap = await getDocs(q);
+            const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AdminUser));
+            setUsers((prev) => append ? [...prev, ...data] : data);
+            setLastDoc(snap.docs[snap.docs.length - 1] || null);
+            setHasMore(snap.docs.length === PAGE_SIZE);
         } catch (e) {
             toast({ title: "Failed to load users", variant: "destructive" });
         } finally {
@@ -43,9 +52,10 @@ const AdminUsers = () => {
 
     const toggleBlock = async (uid: string, currentBlocked: boolean) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/admin/users/${uid}/block?blocked=${!currentBlocked}`, {
+            const res = await fetch(`${BACKEND_URL}/admin/users/${uid}/block`, {
                 method: "PATCH",
                 headers: await adminHeaders(),
+                body: JSON.stringify({ blocked: !currentBlocked }),
             });
             if (res.ok) {
                 toast({
@@ -53,6 +63,9 @@ const AdminUsers = () => {
                     variant: !currentBlocked ? "destructive" : "default"
                 });
                 loadUsers();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast({ title: "Update failed", description: err.detail || "", variant: "destructive" });
             }
         } catch (e) {
             toast({ title: "Update failed", variant: "destructive" });
@@ -79,7 +92,7 @@ const AdminUsers = () => {
                     />
                 </div>
 
-                {loading ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
+                {loading && users.length === 0 ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
                     <div className="grid gap-3">
                         {filtered.length === 0 && <p className="text-center text-gray-400 py-10">No users found matching your search.</p>}
                         {filtered.map((u) => (
@@ -123,6 +136,15 @@ const AdminUsers = () => {
                                 </div>
                             </div>
                         ))}
+                        {hasMore && !loading && (
+                            <button
+                                type="button"
+                                onClick={() => loadUsers(true)}
+                                className="w-full py-3 text-sm text-gray-400 hover:text-white border border-white/10 rounded-xl hover:border-white/20 transition-all"
+                            >
+                                Load more users
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

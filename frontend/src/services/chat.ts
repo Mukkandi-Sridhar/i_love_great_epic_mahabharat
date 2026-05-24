@@ -91,24 +91,22 @@ export const chatService = {
       for (const eventText of events) {
         const line = eventText.split("\n").find((item) => item.startsWith("data: "));
         if (!line) continue;
-        const parsed = JSON.parse(line.slice(6));
-        if (parsed.type === "error" && typeof parsed.code !== "number") {
-          const message = String(parsed.message || "").toLowerCase();
-          if (message.includes("rate") || message.includes("quickly")) parsed.code = 429;
-          if (message.includes("auth") || message.includes("uid") || message.includes("blocked")) parsed.code = 403;
+        try {
+          const parsed = JSON.parse(line.slice(6));
+          onEvent(parsed);
+        } catch {
+          // Malformed SSE frame; wait for the next valid event.
         }
-        onEvent(parsed);
       }
     }
 
     if (buffer.startsWith("data: ")) {
-      const parsed = JSON.parse(buffer.slice(6));
-      if (parsed.type === "error" && typeof parsed.code !== "number") {
-        const message = String(parsed.message || "").toLowerCase();
-        if (message.includes("rate") || message.includes("quickly")) parsed.code = 429;
-        if (message.includes("auth") || message.includes("uid") || message.includes("blocked")) parsed.code = 403;
+      try {
+        const parsed = JSON.parse(buffer.slice(6));
+        onEvent(parsed);
+      } catch {
+        // Malformed SSE frame; skip silently.
       }
-      onEvent(parsed);
     }
   },
 };

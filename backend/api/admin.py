@@ -20,9 +20,15 @@ from backend.rag.ingest import ingest_products
 logger = logging.getLogger("ChatbotBackend.api.admin")
 router = APIRouter(tags=["admin"])
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
-db = get_firestore_client()
 
 ORDER_STATUSES = {"processing", "shipped", "delivered", "cancelled", "refunded", "paid"}
+
+
+def _db():
+    database = get_firestore_client()
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    return database
 
 
 class GrantAccessRequest(BaseModel):
@@ -78,13 +84,11 @@ async def refresh_rag(request: Request, admin_uid: str = Depends(require_admin))
 @limiter.limit("10/minute")
 async def admin_grant_access(request: Request, body: GrantAccessRequest, admin_uid: str = Depends(require_admin)):
     """Manually grant product access to a user."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
     def _write_access() -> dict:
-        purchase_ref = db.collection("users").document(body.uid).collection("purchases").document(body.product_id)
-        notif_ref = db.collection("users").document(body.uid).collection("notifications").document()
-        batch = db.batch()
+        database = _db()
+        purchase_ref = database.collection("users").document(body.uid).collection("purchases").document(body.product_id)
+        notif_ref = database.collection("users").document(body.uid).collection("notifications").document()
+        batch = database.batch()
         batch.set(
             purchase_ref,
             {
@@ -117,6 +121,8 @@ async def admin_grant_access(request: Request, body: GrantAccessRequest, admin_u
 
     try:
         return await asyncio.to_thread(_write_access)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("Manual grant failed: %s", exc)
         raise HTTPException(status_code=500, detail="Grant failed")
@@ -126,19 +132,17 @@ async def admin_grant_access(request: Request, body: GrantAccessRequest, admin_u
 @limiter.limit("10/minute")
 async def admin_revoke_access(request: Request, body: RevokeAccessRequest, admin_uid: str = Depends(require_admin)):
     """Manually revoke product access from a user."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
     def _delete_access() -> dict:
-        purchase_ref = db.collection("users").document(body.uid).collection("purchases").document(body.product_id)
+        database = _db()
+        purchase_ref = database.collection("users").document(body.uid).collection("purchases").document(body.product_id)
         snap = purchase_ref.get()
         if not snap.exists:
             raise HTTPException(status_code=404, detail="Purchase not found for this user")
 
-        notif_ref = db.collection("users").document(body.uid).collection("notifications").document()
+        notif_ref = database.collection("users").document(body.uid).collection("notifications").document()
         title = (snap.to_dict() or {}).get("title", body.product_id)
 
-        batch = db.batch()
+        batch = database.batch()
         batch.delete(purchase_ref)
         batch.set(
             notif_ref,
@@ -171,11 +175,9 @@ async def admin_update_order(
     admin_uid: str = Depends(require_admin),
 ):
     """Update order status and tracking information."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
     def _update_order() -> dict:
-        order_ref = db.collection("orders_index").document(order_id)
+        database = _db()
+        order_ref = database.collection("orders_index").document(order_id)
         order_doc = order_ref.get()
         if not order_doc.exists:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -194,13 +196,13 @@ async def admin_update_order(
         if body.admin_note:
             update_data["adminNote"] = body.admin_note
 
-        batch = db.batch()
+        batch = database.batch()
         batch.update(order_ref, update_data)
         if uid:
-            user_order_ref = db.collection("users").document(uid).collection("orders").document(order_id)
+            user_order_ref = database.collection("users").document(uid).collection("orders").document(order_id)
             batch.update(user_order_ref, update_data)
             if body.status in {"shipped", "delivered"}:
-                notif_ref = db.collection("users").document(uid).collection("notifications").document()
+                notif_ref = database.collection("users").document(uid).collection("notifications").document()
                 batch.set(
                     notif_ref,
                     {
@@ -233,10 +235,8 @@ async def admin_send_notification(
     admin_uid: str = Depends(require_admin),
 ):
     """Send a notification to one user or broadcast to all users."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
     def _send_notification() -> dict:
+        database = _db()
         notif_data = {
             "title": body.title,
             "message": body.message,
@@ -245,20 +245,20 @@ async def admin_send_notification(
         }
 
         if body.uid:
-            db.collection("users").document(body.uid).collection("notifications").document().set(notif_data)
+            database.collection("users").document(body.uid).collection("notifications").document().set(notif_data)
             return {"status": "success", "sent": 1}
 
         sent = 0
-        batch = db.batch()
+        batch = database.batch()
         batch_count = 0
-        for user_doc in db.collection("users").stream():
-            ref = db.collection("users").document(user_doc.id).collection("notifications").document()
+        for user_doc in database.collection("users").stream():
+            ref = database.collection("users").document(user_doc.id).collection("notifications").document()
             batch.set(ref, notif_data)
             batch_count += 1
             sent += 1
             if batch_count >= 499:
                 batch.commit()
-                batch = db.batch()
+                batch = database.batch()
                 batch_count = 0
         if batch_count:
             batch.commit()
@@ -266,6 +266,8 @@ async def admin_send_notification(
 
     try:
         return await asyncio.to_thread(_send_notification)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("Notification failed: %s", exc)
         raise HTTPException(status_code=500, detail="Notification failed")
@@ -280,11 +282,9 @@ async def admin_block_user(
     admin_uid: str = Depends(require_admin),
 ):
     """Block or unblock a user."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
     def _set_block_status() -> dict:
-        db.collection("users").document(uid).update(
+        database = _db()
+        database.collection("users").document(uid).update(
             {
                 "blocked": body.blocked,
                 "updatedAt": firestore.SERVER_TIMESTAMP,
@@ -296,6 +296,8 @@ async def admin_block_user(
 
     try:
         return await asyncio.to_thread(_set_block_status)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("User block failed: %s", exc)
         raise HTTPException(status_code=500, detail="Block failed")
@@ -310,11 +312,9 @@ async def admin_reply_ticket(
     admin_uid: str = Depends(require_admin),
 ):
     """Reply to a support ticket, mark it resolved, and notify the user."""
-    if not db:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
     def _reply_ticket() -> dict:
-        ticket_ref = db.collection("tickets").document(ticket_id)
+        database = _db()
+        ticket_ref = database.collection("tickets").document(ticket_id)
         ticket = ticket_ref.get()
         if not ticket.exists:
             raise HTTPException(status_code=404, detail="Ticket not found")
@@ -326,12 +326,12 @@ async def admin_reply_ticket(
             "resolvedAt": firestore.SERVER_TIMESTAMP,
         }
         uid = ticket_data.get("uid")
-        batch = db.batch()
+        batch = database.batch()
         batch.update(ticket_ref, update_data)
         if uid:
-            user_ticket_ref = db.collection("users").document(uid).collection("tickets").document(ticket_id)
+            user_ticket_ref = database.collection("users").document(uid).collection("tickets").document(ticket_id)
             batch.set(user_ticket_ref, update_data, merge=True)
-            notif_ref = db.collection("users").document(uid).collection("notifications").document()
+            notif_ref = database.collection("users").document(uid).collection("notifications").document()
             batch.set(
                 notif_ref,
                 {

@@ -266,16 +266,20 @@ async def _get_user_summary(uid: str) -> dict:
         except Exception:
             open_tickets = 0
 
-        return {
-            "order_count": len(orders_docs),
-            "latest_orders": [
+        latest_orders = []
+        for d in orders_docs:
+            data = d.to_dict() or {}
+            latest_orders.append(
                 {
                     "order_id": d.id,
-                    "product": (d.to_dict() or {}).get("productTitle", ""),
-                    "status": (d.to_dict() or {}).get("status", ""),
+                    "product": data.get("productTitle", ""),
+                    "status": data.get("status", ""),
                 }
-                for d in orders_docs
-            ],
+            )
+
+        return {
+            "order_count": len(orders_docs),
+            "latest_orders": latest_orders,
             "owned_products": [(d.to_dict() or {}).get("title") or d.id for d in purchases_docs],
             "open_tickets": open_tickets,
         }

@@ -310,8 +310,8 @@ async def run_agent_streaming(
                 yield event[1]
                 continue
 
-            _, assistant_message, tools_called = event
             if event[0] == "done":
+                _, assistant_message, tools_called = event
                 yield {"type": "generating", "message": "Generating response..."}
                 response = assistant_message.content or "I can help with that."
                 for char in response:
