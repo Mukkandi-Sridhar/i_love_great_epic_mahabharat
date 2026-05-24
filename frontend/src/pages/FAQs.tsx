@@ -6,9 +6,11 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from "@/components/ui/accordion";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const FAQs = () => {
     const navigate = useNavigate();
+    usePageTitle("FAQs");
 
     const faqs = [
         {

@@ -5,11 +5,13 @@ import { useFirebase } from "@/contexts/FirebaseContext";
 import { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Profile = () => {
   const navigate = useNavigate();
   const { user, logout } = useFirebase();
   const [isAdmin, setIsAdmin] = useState(false);
+  usePageTitle("My Profile");
 
   useEffect(() => {
     if (!user) return;

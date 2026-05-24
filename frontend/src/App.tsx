@@ -2,8 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { ReactNode, useEffect, Suspense, lazy } from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ReactNode, Suspense, lazy } from "react";
 import { FirebaseProvider } from "./contexts/FirebaseContext";
 import { SettingsProvider, useSettings } from "./context/SettingsContext";
 
@@ -51,8 +51,6 @@ import Layout from "./components/Layout";
 
 import DivineBackground from "./components/DivineBackground";
 import CustomCursor from "./components/CustomCursor";
-import { useRoutePrefetch } from "./hooks/usePrefetch";
-
 import BackgroundMusic from "./components/BackgroundMusic";
 
 const AppProviders = ({ children }: { children: ReactNode }) => {
@@ -60,7 +58,16 @@ const AppProviders = ({ children }: { children: ReactNode }) => {
 
 
 
-  if (settingsLoading) return null;
+  if (settingsLoading) return (
+    <div className="fixed inset-0 bg-black flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-16 h-16 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+        <p className="text-primary/60 text-sm font-serif tracking-widest">
+          ॐ Loading...
+        </p>
+      </div>
+    </div>
+  );
 
   if (settings?.maintenanceMode && !window.location.pathname.startsWith("/admin")) {
     return (

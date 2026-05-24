@@ -11,6 +11,7 @@ import DivineSeparator from "@/components/DivineSeparator";
 import { SkeletonCard } from "@/components/SkeletonCard";
 import brandLogo from "@/assets/logo.png";
 import { BookOpen, Target, ArrowRight, Users, Zap, Shield } from "lucide-react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const trustBadges = [
   { icon: Users, title: "1,200+ Happy Devotees", subtitle: "Across India" },
@@ -38,6 +39,7 @@ const Explore = () => {
   const navigate = useNavigate();
   const [catalog, setCatalog] = useState<Product[]>(FALLBACK_PRODUCTS);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  usePageTitle("Explore");
 
   useEffect(() => {
     const unsubscribe = subscribeToProducts((products) => {

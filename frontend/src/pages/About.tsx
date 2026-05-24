@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Heart, Book, Users } from "lucide-react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const About = () => {
   const navigate = useNavigate();
+  usePageTitle("About");
 
   return (
     <div className="min-h-screen bg-background pb-6">

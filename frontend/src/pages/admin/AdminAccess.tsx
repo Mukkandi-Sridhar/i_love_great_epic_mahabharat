@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Key, Search, ShieldCheck, ShieldAlert, Package, Trash2 } from "lucide-react";
 import { BACKEND_URL, adminHeaders } from "@/services/api";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface UserProfile {
     uid: string;
@@ -26,6 +27,7 @@ const AdminAccess = () => {
     const [userPurchases, setUserPurchases] = useState<Purchase[]>([]);
     const [loading, setLoading] = useState(false);
     const { toast } = useToast();
+    usePageTitle("Admin Access");
 
     const searchUser = async () => {
         if (!email) return;

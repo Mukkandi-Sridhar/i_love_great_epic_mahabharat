@@ -21,6 +21,7 @@ import {
     Instagram,
     MessageCircle
 } from "lucide-react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface AppSettings {
     bannerText: string;
@@ -41,6 +42,7 @@ const AdminSettings = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const { toast } = useToast();
+    usePageTitle("Admin Settings");
 
     const loadSettings = async () => {
         try {

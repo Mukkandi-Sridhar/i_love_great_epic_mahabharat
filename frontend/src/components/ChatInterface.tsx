@@ -42,6 +42,8 @@ const toolDisplayName = (tool?: string) => {
     return names[tool || ""] || "Working";
 };
 
+const createMessageId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 export const ChatInterface = () => {
     const { user } = useFirebase();
     const userName = user?.displayName || user?.email?.split("@")[0] || "Guest";
@@ -51,6 +53,7 @@ export const ChatInterface = () => {
 
     const [messages, setMessages] = useState<ChatMessage[]>([
         {
+            id: "greeting-0",
             role: "assistant",
             content: user ? `Namaste ${userName.split(" ")[0]}! How can I assist you today?` : "Namaste! How can I help you today?",
             timestamp: Date.now(),
@@ -63,15 +66,65 @@ export const ChatInterface = () => {
     const [agentStatus, setAgentStatus] = useState<string | null>(null);
     const [activeTools, setActiveTools] = useState<string[]>([]);
     const [isListening, setIsListening] = useState(false);
+    const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
+    const containerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
     const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const tokenBufferRef = useRef<string>("");
+    const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const greetingSet = useRef(false);
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        const container = containerRef.current;
+        if (!container) return;
+        const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (distanceFromBottom < 100) {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+    };
+
+    const forceScrollToBottom = () => {
+        requestAnimationFrame(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        });
+    };
+
+    const appendAssistantChunk = (chunk: string) => {
+        if (!chunk) return;
+        setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { ...last, content: last.content + chunk, timestamp: Date.now() }];
+            }
+            return [...prev, { id: createMessageId("assistant"), role: "assistant", content: chunk, timestamp: Date.now() }];
+        });
+    };
+
+    const startFlushTimer = () => {
+        if (flushTimerRef.current) return;
+        flushTimerRef.current = setInterval(() => {
+            const chunk = tokenBufferRef.current;
+            if (!chunk) return;
+            tokenBufferRef.current = "";
+            appendAssistantChunk(chunk);
+        }, 40);
+    };
+
+    const stopFlushTimer = (flushRemaining = true) => {
+        if (flushTimerRef.current) {
+            clearInterval(flushTimerRef.current);
+            flushTimerRef.current = null;
+        }
+        if (flushRemaining && tokenBufferRef.current) {
+            const chunk = tokenBufferRef.current;
+            tokenBufferRef.current = "";
+            appendAssistantChunk(chunk);
+        } else if (!flushRemaining) {
+            tokenBufferRef.current = "";
+        }
     };
 
     const stopListening = () => {
@@ -87,13 +140,23 @@ export const ChatInterface = () => {
     }, [messages, agentStatus, activeTools]);
 
     useEffect(() => {
-        return () => stopListening();
+        const onResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            stopListening();
+            stopFlushTimer(false);
+        };
     }, []);
 
     useEffect(() => {
         if (!greetingSet.current && user && messages.length === 1 && messages[0].role === "assistant") {
             setMessages([
                 {
+                    id: "greeting-0",
                     role: "assistant",
                     content: `Namaste ${userName.split(" ")[0]}! How can I assist you today?`,
                     timestamp: Date.now(),
@@ -105,8 +168,11 @@ export const ChatInterface = () => {
 
     useEffect(() => {
         if (!user) {
+            const keys = Object.keys(localStorage).filter((key) => key.startsWith("dharma_chat_session_"));
+            keys.forEach((key) => localStorage.removeItem(key));
             setMessages([
                 {
+                    id: "greeting-0",
                     role: "assistant",
                     content: "Namaste! How can I help you today?",
                     timestamp: Date.now(),
@@ -138,6 +204,7 @@ export const ChatInterface = () => {
                     .map((doc) => {
                         const data = doc.data();
                         return {
+                            id: doc.id,
                             role: data.role as ChatMessage["role"],
                             content: data.content as string,
                             timestamp: data.timestamp?.toMillis?.() || Date.now(),
@@ -153,6 +220,7 @@ export const ChatInterface = () => {
                     const firstName = (user.displayName || user.email?.split("@")[0] || "").split(" ")[0];
                     setMessages([
                         {
+                            id: "greeting-0",
                             role: "assistant",
                             content: firstName ? `Namaste ${firstName}! How can I assist you today?` : "Namaste! How can I help you today?",
                             timestamp: Date.now(),
@@ -241,17 +309,33 @@ export const ChatInterface = () => {
 
         stopListening();
         setShowQuickQuestions(false);
-        setAgentStatus("Thinking...");
-        setActiveTools([]);
 
         const userMessage: ChatMessage = {
+            id: `${Date.now()}-user`,
             role: "user",
             content: trimmed,
             timestamp: Date.now(),
         };
 
         setMessages((prev) => [...prev, userMessage]);
+        forceScrollToBottom();
         setInput("");
+
+        if (!user) {
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: createMessageId("auth"),
+                    role: "assistant",
+                    content: "Please sign in to continue chatting with Dharma.",
+                    timestamp: Date.now(),
+                },
+            ]);
+            return;
+        }
+
+        setAgentStatus("Thinking...");
+        setActiveTools([]);
         setIsLoading(true);
 
         let handledError = false;
@@ -266,10 +350,6 @@ export const ChatInterface = () => {
                     name: userName,
                     uid: user?.uid || "",
                     session_id: sessionId,
-                    messages: [...messages, userMessage].slice(-20).map((item) => ({
-                        role: item.role,
-                        content: item.content,
-                    })),
                 },
                 (event) => {
                     switch (event.type) {
@@ -288,30 +368,18 @@ export const ChatInterface = () => {
                         case "generating":
                             setAgentStatus("Generating response...");
                             setActiveTools([]);
+                            startFlushTimer();
                             break;
                         case "token":
-                            streamedContent += event.delta || "";
-                            if (!streamingAssistantStarted) {
+                            if (event.delta) {
+                                startFlushTimer();
+                                streamedContent += event.delta;
+                                tokenBufferRef.current += event.delta;
                                 streamingAssistantStarted = true;
-                                setMessages((prev) => [
-                                    ...prev,
-                                    {
-                                        role: "assistant",
-                                        content: streamedContent,
-                                        timestamp: Date.now(),
-                                    },
-                                ]);
-                            } else {
-                                setMessages((prev) =>
-                                    prev.map((item, index) =>
-                                        index === prev.length - 1 && item.role === "assistant"
-                                            ? { ...item, content: streamedContent, timestamp: Date.now() }
-                                            : item
-                                    )
-                                );
                             }
                             break;
                         case "done":
+                            stopFlushTimer();
                             if (event.session_id && event.session_id !== sessionId) {
                                 setSessionId(event.session_id);
                                 if (user?.uid) {
@@ -321,17 +389,18 @@ export const ChatInterface = () => {
                             if (!handledError) {
                                 if (streamingAssistantStarted) {
                                     const finalContent = event.response || streamedContent || "I can help with that.";
-                                    setMessages((prev) =>
-                                        prev.map((item, index) =>
-                                            index === prev.length - 1 && item.role === "assistant"
-                                                ? { ...item, content: finalContent, timestamp: Date.now() }
-                                                : item
-                                        )
-                                    );
+                                    setMessages((prev) => {
+                                        const last = prev[prev.length - 1];
+                                        if (last?.role === "assistant") {
+                                            return [...prev.slice(0, -1), { ...last, content: finalContent, timestamp: Date.now() }];
+                                        }
+                                        return [...prev, { id: createMessageId("assistant"), role: "assistant", content: finalContent, timestamp: Date.now() }];
+                                    });
                                 } else {
                                     setMessages((prev) => [
                                         ...prev,
                                         {
+                                            id: createMessageId("assistant"),
                                             role: "assistant",
                                             content: event.response || "I can help with that.",
                                             timestamp: Date.now(),
@@ -343,12 +412,19 @@ export const ChatInterface = () => {
                             setActiveTools([]);
                             break;
                         case "error":
+                            stopFlushTimer();
                             handledError = true;
+                            const errMsg = event.code === 429
+                                ? "You're sending messages too quickly. Please wait a moment. 🙏"
+                                : event.code === 401 || event.code === 403
+                                    ? "Please sign in to continue chatting with Dharma."
+                                    : "Sorry, I'm having trouble connecting. Please try again.";
                             setMessages((prev) => [
                                 ...prev,
                                 {
+                                    id: `err-${Date.now()}`,
                                     role: "assistant",
-                                    content: "Sorry, I'm having trouble connecting. Please try again.",
+                                    content: errMsg,
                                     timestamp: Date.now(),
                                 },
                             ]);
@@ -360,6 +436,7 @@ export const ChatInterface = () => {
             setMessages((prev) => [
                 ...prev,
                 {
+                    id: `err-${Date.now()}`,
                     role: "assistant",
                     content: "Sorry, I'm having trouble connecting. Please try again.",
                     timestamp: Date.now(),
@@ -369,6 +446,7 @@ export const ChatInterface = () => {
             setIsLoading(false);
             setAgentStatus(null);
             setActiveTools([]);
+            stopFlushTimer();
         }
     };
 
@@ -377,7 +455,13 @@ export const ChatInterface = () => {
         await sendMessage(input);
     };
 
-    const quickQuestions = ["Where is my order?", "Product info", "Refund policy"];
+    const quickQuestions = [
+        "📦 Track my order",
+        "📖 Which product suits me?",
+        "🔁 Refund & return policy",
+        "🎧 What's in the pendrive?",
+    ];
+    const visibleQuestions = isMobile ? quickQuestions.slice(0, 2) : quickQuestions;
 
     return (
         <div className="flex flex-col w-full h-full md:max-h-[700px] max-w-3xl mx-auto bg-black/60 backdrop-blur-2xl md:rounded-2xl border-y md:border border-white/10 overflow-hidden shadow-2xl relative">
@@ -397,13 +481,13 @@ export const ChatInterface = () => {
                 {user && <span className="text-xs text-gray-400">{userName.split(" ")[0]}</span>}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scrollbar-none relative z-10">
+            <div ref={containerRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scrollbar-none relative z-10">
                 <AnimatePresence initial={false}>
-                    {messages.map((msg, idx) => {
+                    {messages.map((msg) => {
                         const isUser = msg.role === "user";
                         return (
                             <motion.div
-                                key={idx}
+                                key={msg.id}
                                 layout
                                 initial={{ opacity: 0, scale: 0.98, y: 10 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -452,7 +536,7 @@ export const ChatInterface = () => {
 
                 {showQuickQuestions && messages.length === 1 && (
                     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="ml-14 flex flex-wrap gap-2">
-                        {quickQuestions.map((question) => (
+                        {visibleQuestions.map((question) => (
                             <button
                                 key={question}
                                 type="button"
@@ -507,8 +591,10 @@ export const ChatInterface = () => {
                     <button
                         type="button"
                         onClick={startListening}
+                        disabled={isLoading}
+                        aria-label={isListening ? "Stop listening" : "Start voice input"}
                         className={cn(
-                            "p-2 rounded-lg transition-all text-gray-500 hover:text-primary hover:bg-white/5",
+                            "p-2 rounded-lg transition-all text-gray-500 hover:text-primary hover:bg-white/5 disabled:opacity-30 disabled:hover:text-gray-500 disabled:hover:bg-transparent",
                             isListening && "text-primary bg-primary/10 shadow-[0_0_15px_rgba(255,215,0,0.2)]"
                         )}
                         title="Voice Input"
@@ -529,6 +615,7 @@ export const ChatInterface = () => {
                     <button
                         type="submit"
                         disabled={isLoading || !input.trim()}
+                        aria-label="Send message"
                         className="p-2 rounded-lg transition-all text-gray-500 hover:text-white disabled:opacity-20 flex items-center justify-center hover:bg-white/5"
                     >
                         <Send className="w-5 h-5" />

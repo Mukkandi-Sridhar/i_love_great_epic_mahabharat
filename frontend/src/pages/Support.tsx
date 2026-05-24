@@ -1,6 +1,9 @@
 import { ChatInterface } from "@/components/ChatInterface";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Support = () => {
+  usePageTitle("Support");
+
   return (
     <div className="flex flex-col relative overflow-hidden w-full h-[calc(100dvh-136px)] md:h-[calc(100dvh-80px)]">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/40 via-background to-background pointer-events-none" />

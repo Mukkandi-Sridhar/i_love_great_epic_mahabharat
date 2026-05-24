@@ -18,6 +18,7 @@ import { getUserProfile, subscribeToProducts } from "@/services/db";
 import { completeOrder, createRazorpayOrder } from "@/services/payment";
 import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { BACKEND_URL } from "@/services/api";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface RazorpaySuccessResponse {
   razorpay_order_id: string;
@@ -44,6 +45,7 @@ const Payment = () => {
 
   const [catalog, setCatalog] = useState<Product[]>(FALLBACK_PRODUCTS);
   const product = useMemo(() => catalog.find((item) => item.id === id), [catalog, id]);
+  usePageTitle(product ? `Checkout - ${product.title}` : "Checkout");
 
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState(user?.email || "");

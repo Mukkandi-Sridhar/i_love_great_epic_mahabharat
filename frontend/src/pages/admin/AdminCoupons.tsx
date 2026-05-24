@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Ticket, Plus, Trash2, Check, X } from "lucide-react";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface Coupon {
     id: string;
@@ -23,6 +24,7 @@ const AdminCoupons = () => {
     const [loading, setLoading] = useState(true);
     const [newCoupon, setNewCoupon] = useState({ code: "", type: "percent" as "percent" | "fixed", value: 0 });
     const { toast } = useToast();
+    usePageTitle("Admin Coupons");
 
     const loadCoupons = async () => {
         try {

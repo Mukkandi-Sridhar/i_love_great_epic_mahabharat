@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { BACKEND_URL, adminHeaders } from "@/services/api";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface Ticket {
     id: string;
@@ -27,6 +28,7 @@ const AdminTickets = () => {
     const [resolving, setResolving] = useState<string | null>(null);
     const [replyText, setReplyText] = useState<Record<string, string>>({});
     const { toast } = useToast();
+    usePageTitle("Admin Tickets");
 
     const loadTickets = async () => {
         setLoading(true);

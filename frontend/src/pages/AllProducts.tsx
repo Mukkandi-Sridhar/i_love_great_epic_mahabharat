@@ -9,6 +9,7 @@ import { useFirebase } from "@/contexts/FirebaseContext";
 import { subscribeToOwnedProductIds, subscribeToProducts } from "@/services/db";
 import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const AllProducts = () => {
   const { user } = useFirebase();
@@ -20,6 +21,7 @@ const AllProducts = () => {
   const [filterRating, setFilterRating] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [catalog, setCatalog] = useState<Product[]>(FALLBACK_PRODUCTS);
+  usePageTitle("Store");
 
 
 

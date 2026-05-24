@@ -1,6 +1,9 @@
 import { Link } from "react-router-dom";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const NotFound = () => {
+  usePageTitle("Page Not Found");
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-black text-white">
       <div className="text-center">

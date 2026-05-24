@@ -3,12 +3,14 @@ import { CheckCircle2, CreditCard, Hash, Mail, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import { useEffect, useState } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const ThankYou = () => {
   const navigate = useNavigate();
   const { user } = useFirebase();
   const [countdown, setCountdown] = useState(6);
   const location = useLocation();
+  usePageTitle("Thank You");
   const state = (location.state || {}) as {
     mode?: "prepaid" | "physical-paid";
     orderId?: string;

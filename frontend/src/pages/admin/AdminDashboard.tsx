@@ -4,6 +4,7 @@ import { collection, getDocs, query, orderBy, limit, Timestamp } from "firebase/
 import { db } from "@/lib/firebase";
 import { Package, DollarSign, Ticket, Users, BookOpen, Key, Bell, Settings, ArrowRight } from "lucide-react";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface Stats {
     totalOrders: number;
@@ -22,6 +23,7 @@ const AdminDashboard = () => {
     const [stats, setStats] = useState<Stats>({ totalOrders: 0, totalRevenue: 0, openTickets: 0, totalUsers: 0, totalBooks: 0 });
     const [dailyRevenue, setDailyRevenue] = useState<DailyRevenue[]>([]);
     const [loading, setLoading] = useState(true);
+    usePageTitle("Admin Dashboard");
 
     useEffect(() => {
         const load = async () => {

@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Terms = () => {
   const navigate = useNavigate();
+  usePageTitle("Terms");
 
   return (
     <div className="pb-6">

@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Truck } from "lucide-react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Shipping = () => {
     const navigate = useNavigate();
+    usePageTitle("Shipping");
 
     return (
         <div className="min-h-screen bg-background pb-6">

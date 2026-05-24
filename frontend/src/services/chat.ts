@@ -2,9 +2,10 @@
 import { BACKEND_URL, authHeaders } from "@/services/api";
 
 export interface ChatMessage {
+  id: string;
   role: "user" | "assistant" | "system";
   content: string;
-  timestamp?: number;
+  timestamp: number;
 }
 
 export interface ChatRequestPayload {
@@ -13,7 +14,6 @@ export interface ChatRequestPayload {
   name?: string;
   uid: string;
   session_id?: string;
-  messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
 }
 
 export interface ChatResponse {
@@ -29,6 +29,7 @@ export interface StreamEvent {
   delta?: string;
   response?: string;
   session_id?: string;
+  code?: number;
 }
 
 export const chatService = {
@@ -67,7 +68,12 @@ export const chatService = {
     });
 
     if (!response.ok || !response.body) {
-      throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      onEvent({
+        type: "error",
+        code: response.status,
+        message: `Server error: ${response.status} ${response.statusText}`,
+      });
+      return;
     }
 
     const reader = response.body.getReader();
@@ -85,12 +91,24 @@ export const chatService = {
       for (const eventText of events) {
         const line = eventText.split("\n").find((item) => item.startsWith("data: "));
         if (!line) continue;
-        onEvent(JSON.parse(line.slice(6)));
+        const parsed = JSON.parse(line.slice(6));
+        if (parsed.type === "error" && typeof parsed.code !== "number") {
+          const message = String(parsed.message || "").toLowerCase();
+          if (message.includes("rate") || message.includes("quickly")) parsed.code = 429;
+          if (message.includes("auth") || message.includes("uid") || message.includes("blocked")) parsed.code = 403;
+        }
+        onEvent(parsed);
       }
     }
 
     if (buffer.startsWith("data: ")) {
-      onEvent(JSON.parse(buffer.slice(6)));
+      const parsed = JSON.parse(buffer.slice(6));
+      if (parsed.type === "error" && typeof parsed.code !== "number") {
+        const message = String(parsed.message || "").toLowerCase();
+        if (message.includes("rate") || message.includes("quickly")) parsed.code = 429;
+        if (message.includes("auth") || message.includes("uid") || message.includes("blocked")) parsed.code = 403;
+      }
+      onEvent(parsed);
     }
   },
 };

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { BACKEND_URL, adminHeaders } from "@/services/api";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface Order {
     id: string;
@@ -41,6 +42,7 @@ const AdminOrders = () => {
     const [expanded, setExpanded] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const { toast } = useToast();
+    usePageTitle("Admin Orders");
 
     const loadOrders = async () => {
         setLoading(true);

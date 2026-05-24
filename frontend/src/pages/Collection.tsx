@@ -7,6 +7,7 @@ import { useFirebase } from "@/contexts/FirebaseContext";
 import { subscribeToPurchases } from "@/services/db";
 import { allProducts } from "@/data/products";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 type PurchaseItem = {
   id: string;
@@ -24,6 +25,7 @@ const Collection = () => {
   const [activeFilter, setActiveFilter] = useState<"all" | "ebook" | "pendrive">("all");
   const [purchases, setPurchases] = useState<PurchaseItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  usePageTitle("My Collection");
 
   useEffect(() => {
     if (!user) {

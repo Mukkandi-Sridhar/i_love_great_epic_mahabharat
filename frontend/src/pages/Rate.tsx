@@ -4,6 +4,7 @@ import { ArrowLeft, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Rate = () => {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ const Rate = () => {
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [feedback, setFeedback] = useState("");
+  usePageTitle("Rate Us");
   
   const handleSubmit = () => {
     if (rating === 0) {

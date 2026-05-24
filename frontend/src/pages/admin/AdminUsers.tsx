@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { BACKEND_URL, adminHeaders } from "@/services/api";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface AdminUser {
     id: string;
@@ -24,6 +25,7 @@ const AdminUsers = () => {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const { toast } = useToast();
+    usePageTitle("Admin Users");
 
     const loadUsers = async () => {
         setLoading(true);

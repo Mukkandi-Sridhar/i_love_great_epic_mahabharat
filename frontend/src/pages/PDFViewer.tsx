@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import { subscribeToOwnedProductIds } from "@/services/db";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const PDFViewer = () => {
   const { id } = useParams();
@@ -11,6 +12,7 @@ const PDFViewer = () => {
   const { user, loading: authLoading } = useFirebase();
   const [zoom, setZoom] = useState(100);
   const [isAllowed, setIsAllowed] = useState<boolean | null>(null);
+  usePageTitle("Reader");
 
   useEffect(() => {
     if (authLoading) return;

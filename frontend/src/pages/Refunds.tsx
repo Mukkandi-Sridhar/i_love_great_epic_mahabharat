@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw } from "lucide-react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Refunds = () => {
     const navigate = useNavigate();
+    usePageTitle("Refunds");
 
     return (
         <div className="min-h-screen bg-background pb-6">

@@ -1,9 +1,11 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Bell, Package, Star, Gift, Zap } from "lucide-react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Notifications = () => {
   const navigate = useNavigate();
   const notifications: any[] = [];
+  usePageTitle("Notifications");
 
   return (
     <div className="min-h-screen bg-background pb-20">

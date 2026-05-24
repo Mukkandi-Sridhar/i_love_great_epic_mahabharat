@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Privacy = () => {
     const navigate = useNavigate();
+    usePageTitle("Privacy Policy");
 
     return (
         <div className="pb-6 px-4">

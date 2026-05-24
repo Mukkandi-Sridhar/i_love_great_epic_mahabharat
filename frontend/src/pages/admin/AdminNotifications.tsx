@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Bell, Send, Users, User } from "lucide-react";
 import { BACKEND_URL, adminHeaders } from "@/services/api";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const AdminNotifications = () => {
     const [title, setTitle] = useState("");
@@ -14,6 +15,7 @@ const AdminNotifications = () => {
     const [targetEmail, setTargetEmail] = useState("");
     const [sending, setSending] = useState(false);
     const { toast } = useToast();
+    usePageTitle("Admin Notifications");
 
     const sendNotification = async (all: boolean) => {
         if (!title || !message) {

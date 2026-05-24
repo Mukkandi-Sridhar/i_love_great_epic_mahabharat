@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Package, Save, RefreshCw } from "lucide-react";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface Product {
     id: string;
@@ -22,6 +23,7 @@ const AdminProducts = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const { toast } = useToast();
+    usePageTitle("Admin Products");
 
     const loadProducts = async () => {
         setLoading(true);

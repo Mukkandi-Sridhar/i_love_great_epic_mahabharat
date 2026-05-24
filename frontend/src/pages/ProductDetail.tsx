@@ -8,6 +8,7 @@ import ThreeDBook from "@/components/ThreeDBook";
 import { allProducts } from "@/data/products";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import { useToast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 // Rating Bar Component - Premium Design
 const RatingBar = ({ stars, percentage }: { stars: number; percentage: number }) => (
@@ -135,6 +136,7 @@ const ProductDetail = () => {
 
   // Use the imported allProducts directly. No useMemo needed for a static import array.
   const product = useMemo(() => allProducts.find((p) => p.id === id), [id]);
+  usePageTitle(product?.title || "Product");
 
   const contentData = product ? productContent[product.type as keyof typeof productContent] || productContent["pendrive"] : productContent.ebook;
   const { reviews, faqs } = contentData;

@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import { updateUserProfile, getUserProfile } from "@/services/db";
 import { updateProfile } from "firebase/auth";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const ProfileDetails = () => {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ const ProfileDetails = () => {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  usePageTitle("Profile Details");
 
   useEffect(() => {
     const load = async () => {

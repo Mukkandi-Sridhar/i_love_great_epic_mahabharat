@@ -3,10 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Shield, CheckCircle2, Lock } from "lucide-react";
 import { useFirebase } from "@/contexts/FirebaseContext";
 import logo from "@/assets/logo.png";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const Auth = () => {
   const navigate = useNavigate();
   const { user, signInWithGoogle } = useFirebase();
+  usePageTitle("Sign In");
 
   // Redirect if already logged in
   if (user) {

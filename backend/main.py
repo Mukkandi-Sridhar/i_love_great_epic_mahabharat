@@ -57,16 +57,27 @@ def _validate_policies_file() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Warm RAG and MCP resources on startup, then release local handles."""
-    try:
-        _validate_policies_file()
-        await ingest_policies()
-        await ingest_products()
-        warm_tool_cache()
-        logger.info("RAG pipeline ready")
-    except Exception as exc:
-        logger.warning("Startup warmup failed gracefully: %s", exc)
+    """Start the API immediately, warming RAG and MCP resources in the background."""
+    async def _warm_resources() -> None:
+        try:
+            _validate_policies_file()
+            await ingest_policies()
+            await ingest_products()
+            warm_tool_cache()
+            logger.info("RAG pipeline ready")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Startup warmup failed gracefully: %s", exc)
+
+    warmup_task = asyncio.create_task(_warm_resources())
     yield
+    if not warmup_task.done():
+        warmup_task.cancel()
+        try:
+            await warmup_task
+        except asyncio.CancelledError:
+            pass
     close_chroma()
 
 

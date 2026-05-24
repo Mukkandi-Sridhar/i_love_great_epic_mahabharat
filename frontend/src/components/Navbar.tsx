@@ -10,13 +10,17 @@ import { allProducts } from '@/data/products';
 import { SearchIndex } from '@/lib/search';
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { db } from "@/lib/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 const Navbar = () => {
+    const location = useLocation();
     const [isScrolled, setIsScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [firestoreProducts, setFirestoreProducts] = useState<any[]>([]);
     const { settings } = useSettings();
 
     const tickerLines = [
@@ -35,8 +39,38 @@ const Navbar = () => {
         return () => clearInterval(interval);
     }, []);
 
-    // Initialize Search Index
-    const searchIndex = useMemo(() => new SearchIndex(allProducts), []);
+    useEffect(() => {
+        const fetchExtra = async () => {
+            try {
+                if (!db) return;
+                const snap = await getDocs(collection(db, "products"));
+                const live = snap.docs.map((doc) => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        ...data,
+                        image: data.image || data.imageUrl || "",
+                        title: data.title || "Untitled product",
+                        type: data.type || "ebook",
+                        rating: data.rating || 0,
+                        price: data.price || 0,
+                    };
+                });
+                setFirestoreProducts(live);
+            } catch {
+                // Static products remain available when Firestore search is unavailable.
+            }
+        };
+        fetchExtra();
+    }, []);
+
+    const catalogProducts = useMemo(() => {
+        const byId = new Map(allProducts.map((product) => [product.id, product]));
+        firestoreProducts.forEach((product) => byId.set(product.id, { ...byId.get(product.id), ...product }));
+        return Array.from(byId.values());
+    }, [firestoreProducts]);
+
+    const searchIndex = useMemo(() => new SearchIndex(catalogProducts), [catalogProducts]);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -121,7 +155,7 @@ const Navbar = () => {
                     </div>
 
                     {/* Right: Cart shortcut */}
-                    <Link to="/all-products" className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 border border-primary/20">
+                    <Link to="/all-products" aria-label="Go to store" className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 border border-primary/20">
                         <ShoppingBag className="w-4 h-4 text-primary" />
                     </Link>
                 </div>
@@ -178,7 +212,7 @@ const Navbar = () => {
                             {/* Search Modal - Minimized */}
                             <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
                                 <DialogTrigger asChild>
-                                    <button className="group relative flex items-center justify-center w-10 h-10 bg-secondary/10 hover:bg-secondary/20 border border-white/10 hover:border-primary/30 rounded-full transition-all duration-300">
+                                    <button aria-label="Open search" className="group relative flex items-center justify-center w-10 h-10 bg-secondary/10 hover:bg-secondary/20 border border-white/10 hover:border-primary/30 rounded-full transition-all duration-300">
                                         <Search className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                                         <div className="absolute inset-0 rounded-full bg-primary/5 opacity-0 group-hover:opacity-100 blur-md transition-opacity duration-500 -z-10" />
                                     </button>
@@ -194,7 +228,7 @@ const Navbar = () => {
                                             autoFocus
                                         />
                                         {searchQuery && (
-                                            <button onClick={() => setSearchQuery("")} className="text-muted-foreground hover:text-white transition-colors">
+                                            <button aria-label="Clear search" onClick={() => setSearchQuery("")} className="text-muted-foreground hover:text-white transition-colors">
                                                 <X className="w-5 h-5" />
                                             </button>
                                         )}
@@ -265,7 +299,7 @@ const Navbar = () => {
                                                             Popular Wisdom
                                                         </div>
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                            {allProducts.slice(0, 4).map((product, index) => (
+                                                            {catalogProducts.slice(0, 4).map((product, index) => (
                                                                 <Link
                                                                     key={product.id}
                                                                     to={`/product/${product.id}`}
@@ -309,13 +343,13 @@ const Navbar = () => {
                                 </DialogContent>
                             </Dialog>
 
-                            <Link to="/profile">
+                            <Link to="/profile" aria-label="Go to profile">
                                 <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all">
                                     <User className="w-5 h-5" />
                                 </Button>
                             </Link>
 
-                            <Link to="/all-products">
+                            <Link to="/all-products" aria-label="Go to store">
                                 <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary hover:bg-primary/10 relative transition-all">
                                     <ShoppingBag className="w-5 h-5" />
                                 </Button>
@@ -333,9 +367,9 @@ const Navbar = () => {
                 <div className="flex items-center justify-around h-16 px-2">
                     {[
                         { name: 'Explore', path: '/', icon: Compass },
-                        { name: 'Ebooks', path: '/all-products?type=ebooks', icon: Store },
+                        { name: 'Store', path: '/all-products', icon: Store },
                         { name: 'Support', path: '/support', icon: Headphones },
-                        { name: 'Account', path: '/profile', icon: User },
+                        { name: 'Profile', path: '/profile', icon: User },
                     ].map((item) => {
                         const Icon = item.icon;
                         const isActive = location.pathname === item.path ||
@@ -345,6 +379,8 @@ const Navbar = () => {
                             <Link
                                 key={item.name}
                                 to={item.path}
+                                aria-label={`Go to ${item.name.toLowerCase()}`}
+                                aria-current={isActive ? "page" : undefined}
                                 className={cn(
                                     "flex flex-col items-center justify-center gap-1.5 px-4 py-2 rounded-xl transition-all duration-300 min-w-[70px] relative",
                                     isActive
