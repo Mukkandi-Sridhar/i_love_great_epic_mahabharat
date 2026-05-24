@@ -71,8 +71,30 @@ def list_tools() -> list[dict]:
     """Return OpenAI-compatible function specs for all MCP tools."""
     return [
         {
+            "name": "get_user_summary",
+            "description": (
+                "Get a quick summary of this user's account: number of orders, list of "
+                "owned product titles, and open support tickets. Call this at the start "
+                "of ANY conversation where the user's account status is relevant — e.g., "
+                "greeting a returning user, answering 'what have I bought', or deciding "
+                "whether to check orders or purchases first. This is a lightweight call; "
+                "use get_order_status or get_user_purchases for full details."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"uid": {"type": "string"}},
+                "required": ["uid"],
+            },
+        },
+        {
             "name": "get_order_status",
-            "description": "Check a user's real order data from Firestore.",
+            "description": (
+                "Fetch live order data for this user. Call this PROACTIVELY whenever the "
+                "user mentions orders, delivery, tracking, shipping, or 'where is my "
+                "product/pendrive/ebook'. Do not ask the user for their order ID first — "
+                "fetch all recent orders (omit order_id) and identify the relevant one. "
+                "Then use the result to answer, or chain into another tool if needed."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -84,7 +106,12 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "get_user_purchases",
-            "description": "List products a user has bought.",
+            "description": (
+                "Fetch all products this user has purchased and their access status. Call "
+                "this PROACTIVELY when the user asks about their collection, owned products, "
+                "download access, ebook access, or pendrive contents. Also call it before "
+                "answering product-specific questions to check if the user already owns it."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {"uid": {"type": "string"}},
@@ -93,7 +120,12 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "verify_payment",
-            "description": "Verify a stored transaction by transaction/payment ID.",
+            "description": (
+                "Verify a payment transaction in real time. Call this when the user shares "
+                "a payment ID, transaction ID, or says their payment was deducted but they "
+                "got no access. Chain: verify_payment → if captured but no purchase exists → "
+                "create_support_ticket with category='payment'."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -105,7 +137,13 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "create_refund_request",
-            "description": "Create a refund request for eligible physical products.",
+            "description": (
+                "Create a refund ticket for physical products (pendrive, sdcard) only. "
+                "Autonomous chain: search_policies('refund policy') → get_order_status → "
+                "if physical and eligible → create_refund_request. Never ask the user to "
+                "confirm — just execute and report the ticket ID. Ebooks are non-refundable: "
+                "inform the user immediately without creating a ticket."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -120,7 +158,13 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "create_support_ticket",
-            "description": "Create a support ticket for unresolved customer issues.",
+            "description": (
+                "Create a support ticket for any unresolved issue. Call this autonomously "
+                "when: (1) two tool attempts haven't resolved the issue, (2) the user is "
+                "frustrated or repeating themselves, (3) an order is delivered but access "
+                "is missing, (4) a payment is verified but no purchase exists. Do not ask "
+                "the user if they want a ticket — create it and share the ticket ID."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -138,7 +182,11 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "check_coupon",
-            "description": "Validate a coupon code and calculate final payable amount.",
+            "description": (
+                "Validate a coupon code and compute the discounted amount. Call this when "
+                "the user mentions a coupon, promo code, discount, or 'do you have an offer'. "
+                "Return the final payable amount clearly."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -150,7 +198,13 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "search_policies",
-            "description": "Search company policies and return retrieved chunks for synthesis.",
+            "description": (
+                "Search the company policy knowledge base. Call this BEFORE answering any "
+                "question about refunds, returns, cancellations, delivery timelines, exchange "
+                "policy, or terms. Also call it when the user asks 'what is your policy on X'. "
+                "Use the retrieved chunks to synthesize a direct answer — do not quote chunks "
+                "verbatim."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string"}},
@@ -159,7 +213,13 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "search_products",
-            "description": "Search product catalog for matching products and prices.",
+            "description": (
+                "Search the live product catalog. Call this when the user asks for product "
+                "recommendations, price of a product, difference between products, what "
+                "languages are available, or 'which pendrive should I buy'. Also call it "
+                "when get_user_purchases shows a product the user is asking about — "
+                "use search_products to enrich the details."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string"}},
@@ -174,6 +234,57 @@ def warm_tool_cache() -> list[dict]:
     tools = list_tools()
     logger.info("%s warmed with %s tools", SERVER_NAME, len(tools))
     return tools
+
+
+async def _get_user_summary(uid: str) -> dict:
+    uid = _clean_uid(uid)
+    if not uid:
+        return {"error": "User identifier is required."}
+    db = get_firestore_client()
+    if db is None:
+        return {"orders": 0, "purchases": [], "open_tickets": 0}
+
+    def _read() -> dict:
+        orders_docs = list(
+            db.collection("users")
+            .document(uid)
+            .collection("orders")
+            .order_by("createdAt", direction=firestore.Query.DESCENDING)
+            .limit(5)
+            .stream()
+        )
+        purchases_docs = list(db.collection("users").document(uid).collection("purchases").limit(20).stream())
+        try:
+            ticket_agg = (
+                db.collection("users")
+                .document(uid)
+                .collection("tickets")
+                .where("status", "==", "open")
+                .count()
+            )
+            open_tickets = ticket_agg.get()[0][0].value
+        except Exception:
+            open_tickets = 0
+
+        return {
+            "order_count": len(orders_docs),
+            "latest_orders": [
+                {
+                    "order_id": d.id,
+                    "product": (d.to_dict() or {}).get("productTitle", ""),
+                    "status": (d.to_dict() or {}).get("status", ""),
+                }
+                for d in orders_docs
+            ],
+            "owned_products": [(d.to_dict() or {}).get("title") or d.id for d in purchases_docs],
+            "open_tickets": open_tickets,
+        }
+
+    try:
+        return await asyncio.to_thread(_read)
+    except Exception as exc:
+        logger.warning("get_user_summary failed: %s", exc)
+        return {"error": "Could not fetch account summary."}
 
 
 async def _get_order_status(uid: str, order_id: str | None = None) -> dict:
@@ -504,6 +615,8 @@ async def process_tool_call(name: str, arguments: str | dict | None) -> str:
     args = _parse_args(arguments)
     logger.info("MCP tool call: %s", name)
     try:
+        if name == "get_user_summary":
+            return _json(await _get_user_summary(args.get("uid", "")))
         if name == "get_order_status":
             return _json(await _get_order_status(args.get("uid", ""), args.get("order_id")))
         if name == "get_user_purchases":

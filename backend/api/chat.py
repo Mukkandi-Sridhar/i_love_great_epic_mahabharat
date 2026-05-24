@@ -12,7 +12,7 @@ from firebase_admin import firestore
 from pydantic import BaseModel, field_validator
 
 from backend.agent.brain import _TOOL_COUNT, run_agent, run_agent_streaming
-from backend.agent.memory import append_fallback_turns, get_history, get_user_context
+from backend.agent.memory import append_fallback_turns, get_history
 from backend.core.auth import check_user_not_blocked, verify_request_uid
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
@@ -126,10 +126,7 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
         await verify_request_uid(request, body.uid, required=True)
         await check_user_not_blocked(body.uid)
         check_uid_rate_limit(body.uid)
-        history, user_context = await asyncio.gather(
-            get_history(body.uid, session_id, limit=10),
-            get_user_context(body.uid),
-        )
+        history = await get_history(body.uid, session_id, limit=10)
         agent_result = await run_agent(
             message=message,
             uid=body.uid,
@@ -137,7 +134,6 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
             name=body.name or (body.email.split("@")[0] if body.email else "there"),
             session_id=session_id,
             history=history,
-            user_context=user_context,
         )
         response = agent_result["response"]
         _save_chat_messages_task(body.uid, session_id, message, response, agent_result.get("tools_called", []))
@@ -188,10 +184,7 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
             await verify_request_uid(request, body.uid, required=True)
             await check_user_not_blocked(body.uid)
             check_uid_rate_limit(body.uid)
-            history, user_context = await asyncio.gather(
-                get_history(body.uid, session_id, limit=10),
-                get_user_context(body.uid),
-            )
+            history = await get_history(body.uid, session_id, limit=10)
 
             async for event in run_agent_streaming(
                 message=message,
@@ -200,7 +193,6 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
                 name=body.name or (body.email.split("@")[0] if body.email else "there"),
                 session_id=session_id,
                 history=history,
-                user_context=user_context,
             ):
                 if event.get("type") == "done":
                     final_response = event.get("response") or final_response

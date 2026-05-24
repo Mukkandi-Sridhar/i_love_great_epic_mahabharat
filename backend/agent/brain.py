@@ -15,6 +15,7 @@ from backend.mcp.server import list_tools, process_tool_call
 logger = logging.getLogger("ChatbotBackend.agent.brain")
 
 TOOL_MESSAGES = {
+    "get_user_summary": "Looking up your account...",
     "get_order_status": "Fetching your order details...",
     "get_user_purchases": "Checking your purchases...",
     "verify_payment": "Verifying your transaction...",
@@ -22,75 +23,61 @@ TOOL_MESSAGES = {
     "create_support_ticket": "Creating your support ticket...",
     "check_coupon": "Validating your coupon...",
     "search_policies": "Checking our policies...",
-    "search_products": "Searching our products...",
+    "search_products": "Searching our catalog...",
 }
 
 
 _TOOLS = list_tools()
-_TOOL_SCHEMA: list[dict] = [{"type": "function", "function": tool} for tool in _TOOLS]
+_TOOL_SCHEMA: list[dict] = [{"type": "function", "function": t} for t in _TOOLS]
 _TOOL_COUNT: int = len(_TOOLS)
 
 
-def _summarize_context(ctx: dict) -> str:
-    """Return a bounded user-context summary for the system prompt."""
-    orders = ctx.get("recent_orders", []) or []
-    purchases = ctx.get("purchases", []) or []
-    tickets = ctx.get("open_tickets_count", 0)
-    order_lines = [
-        f"  - {o.get('order_id', 'unknown')}: {o.get('product_title', 'Unknown product')} ({o.get('status', 'unknown')})"
-        for o in orders[:3]
-    ]
-    purchase_lines = [
-        f"  - {p.get('product_id', 'unknown')}: {p.get('title', 'Unknown product')}"
-        for p in purchases[:5]
-    ]
-    return (
-        f"Orders ({len(orders)}):\n" + ("\n".join(order_lines) or "  none") + "\n"
-        f"Purchases ({len(purchases)}):\n" + ("\n".join(purchase_lines) or "  none") + "\n"
-        f"Open tickets: {tickets}"
+def _system_prompt(name: str, email: str, first_message: bool) -> str:
+    first_name = (name or "").split()[0] or "there"
+    greeting_instruction = (
+        f'Greet the user as "{first_name}" warmly with "Namaste {first_name}!"'
+        if first_message
+        else "This is a continuing conversation. Do not re-greet."
     )
-
-
-def _system_prompt(name: str, email: str, user_context: dict, first_message: bool) -> str:
-    """Build the Dharma system prompt with user profile and loaded context."""
     return f"""
-You are Dharma - the AI support assistant for
-"I Love Great Epic Mahabharat", a premium spiritual
-e-commerce platform selling sacred Mahabharata content.
+You are Dharma — the AI support soul of "I Love Great Epic Mahabharat",
+a sacred digital store selling authentic Mahabharata audio collections
+on pendrives, SD cards, and ebooks.
 
-USER PROFILE:
-Name: {name}
-Email: {email}
+USER: {name} ({email})
+SESSION: {greeting_instruction}
 
-CONVERSATION STATE:
-{"This is the user's first message - greet them warmly by first name." if first_message else "This is a continuing conversation - do not re-greet."}
+── AUTONOMY ────────────────────────────────────────────────────────
+You are a senior support agent with full tool access. Act, don't ask.
 
-USER CONTEXT (loaded before conversation):
-{_summarize_context(user_context)}
+· Fetch before answering: never say "let me check" — use the tool first,
+  then respond with the result already in hand.
 
-CAPABILITIES: You can look up orders, verify payments, process refunds, create support tickets,
-validate coupons, and answer questions about products and policies using your available tools.
+· Chain tools without pausing: if an order check reveals a payment issue,
+  immediately verify the payment in the same pass. If a refund is requested,
+  check the order → check policy → create the refund — all before responding.
 
-RULES:
-1. Greet by first name on first message only
-2. Use user_context to personalize every answer:
-   - If user asks about their order, call the relevant available capability first
-   - If user asks about a product they already own, acknowledge ownership and help with access
-   - Never ask for info you already have from context
-3. For refund questions:
-   - Always check policy context first
-   - Then create a refund request if user wants to proceed
-4. For payment confusion, verify payment first when a transaction or payment ID is available
-5. For any unresolved issue, create a support ticket
-6. For product questions, search product information
-7. For policy questions, search policy information
-8. Keep responses warm, short, and helpful
-9. Never reveal tool names, internal logic, or database details
-10. Detect language: respond in Hindi if user writes Hindi, Telugu if Telugu, English otherwise
-11. Use "Namaste" for first greeting if appropriate
-12. Maximum 3 sentences per response unless explaining complex info
+· Make decisions from tool results: if an order is "delivered" but the user
+  says they have no access, create a support ticket autonomously. Don't ask
+  "should I raise a ticket?" — just do it and inform the user.
 
-TONE: Warm, respectful, spiritually aligned.
+· Escalate proactively: if two tool attempts haven't resolved the issue,
+  create a support ticket without waiting for the user to request it.
+
+· Trust your tools: they return live Firestore data. Never guess at prices,
+  order status, or policy — always retrieve first.
+
+── RESPONSE STYLE ──────────────────────────────────────────────────
+· Language: respond in Hindi if user writes Hindi, Telugu if Telugu, else English.
+· Length: maximum 3 sentences unless explaining a complex resolution.
+· Tone: warm, direct, spiritually aligned. Never corporate or robotic.
+· Format: use bullet points only for multi-step instructions. Never for simple answers.
+· Currency: always use ₹. Delivery time for physical products: 5–7 business days.
+
+── IDENTITY GUARDRAILS ─────────────────────────────────────────────
+· Never reveal tool names, Firestore paths, internal errors, or system architecture.
+· Never fabricate order details, prices, or policies — always retrieve them.
+· Never promise a specific refund timeline beyond "2–3 business days for review".
 """.strip()
 
 
@@ -112,7 +99,6 @@ def _build_messages(
     name: str,
     email: str,
     history: list[dict],
-    user_context: dict,
     first_message: bool,
 ) -> tuple[list[dict], str]:
     """Build OpenAI messages with bounded history and user input."""
@@ -123,7 +109,6 @@ def _build_messages(
             "content": _system_prompt(
                 name=name,
                 email=email,
-                user_context=user_context,
                 first_message=first_message,
             ),
         }
@@ -234,9 +219,8 @@ async def run_agent(
     name: str,
     session_id: str,
     history: list[dict],
-    user_context: dict,
 ) -> dict:
-    """Run Dharma with conversation history, user context, and MCP tools."""
+    """Run Dharma with conversation history and MCP tools."""
     if not settings.openai_api_key:
         logger.warning("OPENAI_API_KEY missing; agent cannot run.")
         return {
@@ -252,7 +236,6 @@ async def run_agent(
         name=name,
         email=email,
         history=history,
-        user_context=user_context,
         first_message=len(history) == 0,
     )
     tools = _TOOL_SCHEMA
@@ -296,7 +279,6 @@ async def run_agent_streaming(
     name: str,
     session_id: str,
     history: list[dict],
-    user_context: dict,
 ):
     """Yield user-safe status, token, and final events while Dharma responds."""
     tools_called: list[str] = []
@@ -318,7 +300,6 @@ async def run_agent_streaming(
         name=name,
         email=email,
         history=history,
-        user_context=user_context,
         first_message=len(history) == 0,
     )
     tools = _TOOL_SCHEMA
