@@ -31,17 +31,13 @@ _TOOLS = list_tools()
 _TOOL_SCHEMA: list[dict] = [{"type": "function", "function": t} for t in _TOOLS]
 _TOOL_COUNT: int = len(_TOOLS)
 
-
-def _system_prompt(name: str, email: str, first_message: bool) -> str:
-    first_name = (name or "").split()[0] or "there"
-    greeting = f'Start with "Namaste {first_name}!"' if first_message else "Continue without re-greeting."
-    return (
-        f"You are Dharma, AI support for 'I Love Great Epic Mahabharat' — "
-        f"a store selling Mahabharata audio on pendrives, SD cards, and ebooks. "
-        f"User: {first_name} ({email}). {greeting} "
-        f"Use your tools freely and autonomously. Respond in the user's language. "
-        f"Be warm, concise, and decisive. Use ₹ for prices."
-    )
+_STATIC_SYSTEM = (
+    "You are Dharma, AI support for 'I Love Great Epic Mahabharat' "
+    "— a store selling Mahabharata audio on pendrives, SD cards, and ebooks. "
+    "Use your tools freely and autonomously. Act, don't ask. "
+    "Fetch data before answering. Chain tools when needed. "
+    "Respond in the user's language. Be warm, concise, decisive. Use ₹ for prices."
+)
 
 
 def _trim_history_to_budget(history: list[dict], max_tokens: int = 1200) -> list[dict]:
@@ -66,16 +62,18 @@ def _build_messages(
 ) -> tuple[list[dict], str]:
     """Build OpenAI messages with bounded history and user input."""
     message = message[:800]
-    messages: list[dict] = [
-        {
-            "role": "system",
-            "content": _system_prompt(
-                name=name,
-                email=email,
-                first_message=first_message,
-            ),
-        }
-    ]
+    first_name = (name or "").split()[0] or "there"
+    messages: list[dict] = [{"role": "system", "content": _STATIC_SYSTEM}]
+    identity_note = (
+        f"[Context: User is {first_name}"
+        + (f" <{email}>" if email else "")
+        + (
+            f". First message — greet with 'Namaste {first_name}!'."
+            if first_message
+            else ". Continuing conversation."
+        )
+        + "]"
+    )
 
     for item in _trim_history_to_budget(history):
         role = item.get("role")
@@ -83,7 +81,7 @@ def _build_messages(
         if role in {"user", "assistant"} and content:
             messages.append({"role": role, "content": str(content)[:800]})
 
-    messages.append({"role": "user", "content": message})
+    messages.append({"role": "user", "content": f"{identity_note}\n{message}"})
     return messages, message
 
 

@@ -483,7 +483,7 @@ export const ChatInterface = () => {
                 )}
             </div>
 
-            <div ref={containerRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scrollbar-none relative z-10">
+            <div ref={containerRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-8 no-scrollbar relative z-10">
                 <AnimatePresence initial={false}>
                     {messages.map((msg, index) => {
                         const isUser = msg.role === "user";

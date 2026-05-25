@@ -7,12 +7,14 @@ import logging
 import sys
 import time
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from firebase_admin import firestore
 from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
@@ -58,6 +60,10 @@ def _validate_policies_file() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start the API immediately, warming RAG and MCP resources in the background."""
+    executor = ThreadPoolExecutor(max_workers=40, thread_name_prefix="firestore")
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(executor)
+
     async def _warm_resources() -> None:
         try:
             _validate_policies_file()
@@ -71,14 +77,17 @@ async def lifespan(app: FastAPI):
             logger.warning("Startup warmup failed gracefully: %s", exc)
 
     warmup_task = asyncio.create_task(_warm_resources())
-    yield
-    if not warmup_task.done():
-        warmup_task.cancel()
-        try:
-            await warmup_task
-        except asyncio.CancelledError:
-            pass
-    close_chroma()
+    try:
+        yield
+    finally:
+        if not warmup_task.done():
+            warmup_task.cancel()
+            try:
+                await warmup_task
+            except asyncio.CancelledError:
+                pass
+        executor.shutdown(wait=False)
+        close_chroma()
 
 
 app = FastAPI(title="Dharma Divine Chatbot API", lifespan=lifespan)
@@ -92,6 +101,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=5)
 
 
 @app.middleware("http")

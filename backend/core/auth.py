@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import json as _json
 import time
 
 from fastapi import HTTPException, Request
@@ -14,7 +17,16 @@ from backend.core.firebase import get_firestore_client
 
 _admin_cache: dict[str, float] = {}
 _blocked_cache: dict[str, float] = {}
+_token_cache: dict[str, tuple[dict, float]] = {}
 _BLOCKED_CACHE_TTL = 300
+_BLOCKED_CACHE_MAX = 5000
+_TOKEN_CACHE_MAX = 2000
+
+
+def _evict_oldest(cache: dict, max_size: int) -> None:
+    if len(cache) > max_size:
+        oldest = next(iter(cache))
+        del cache[oldest]
 
 
 async def verify_firebase_token(token: str) -> dict:
@@ -22,12 +34,40 @@ async def verify_firebase_token(token: str) -> dict:
     token = (token or "").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Missing auth token")
+
     try:
-        return await asyncio.to_thread(auth.verify_id_token, token)
-    except HTTPException:
-        raise
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
+        jti = payload.get("jti") or payload.get("sub", "")
+        exp = float(payload.get("exp", 0))
+        now = time.time()
+        cache_key = f"{jti}:{hashlib.sha256(token.encode('utf-8')).hexdigest()}" if jti else ""
+
+        if cache_key in _token_cache:
+            cached_claims, cached_exp = _token_cache[cache_key]
+            if cached_exp > now:
+                return cached_claims
+            del _token_cache[cache_key]
+    except Exception:
+        jti = ""
+        exp = 0
+        now = time.time()
+        cache_key = ""
+
+    try:
+        decoded = await asyncio.to_thread(auth.verify_id_token, token)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+    if cache_key and exp > now:
+        ttl = min(exp - now, 1800)
+        if len(_token_cache) >= _TOKEN_CACHE_MAX:
+            oldest = next(iter(_token_cache))
+            del _token_cache[oldest]
+        _token_cache[cache_key] = (decoded, now + ttl)
+
+    return decoded
 
 
 async def verify_request_uid(request: Request, uid: str, *, required: bool = False) -> dict | None:
@@ -64,8 +104,10 @@ async def check_user_not_blocked(uid: str) -> None:
         is_blocked = await asyncio.to_thread(_read)
         if is_blocked:
             _blocked_cache[uid] = 0
+            _evict_oldest(_blocked_cache, _BLOCKED_CACHE_MAX)
             raise HTTPException(status_code=403, detail="Account is blocked")
         _blocked_cache[uid] = now + _BLOCKED_CACHE_TTL
+        _evict_oldest(_blocked_cache, _BLOCKED_CACHE_MAX)
     except HTTPException:
         raise
     except Exception:

@@ -291,7 +291,7 @@ async def ingest_products() -> None:
             logger.warning("Firestore products collection empty; using fallback product catalog for RAG.")
             products = FALLBACK_PRODUCT_CATALOG
 
-        catalog_json = json.dumps(products, sort_keys=True)
+        catalog_json = json.dumps(products, sort_keys=True, default=str)
         source_hash = _hash_text(catalog_json)
         texts = [_product_text(product) for product in products]
         client = _get_chroma_client()

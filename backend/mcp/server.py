@@ -307,7 +307,14 @@ async def _get_user_purchases(uid: str) -> dict:
 
     def _read() -> dict:
         purchases = []
-        docs = db.collection("users").document(uid).collection("purchases").stream()
+        docs = (
+            db.collection("users")
+            .document(uid)
+            .collection("purchases")
+            .order_by("createdAt", direction=firestore.Query.DESCENDING)
+            .limit(20)
+            .stream()
+        )
         for doc in docs:
             data = doc.to_dict() or {}
             purchases.append(
@@ -546,9 +553,57 @@ async def _search_policies(query: str) -> dict:
     return {"retrieved_chunks": lines, "sections_referenced": sections}
 
 
+def _product_summary(product_id: str, data: dict) -> dict:
+    """Return compact catalog fields safe for the model."""
+    return {
+        "product_id": product_id,
+        "title": data.get("title", ""),
+        "type": data.get("type", ""),
+        "price": data.get("price", 0),
+        "language": data.get("language", ""),
+        "summary": str(data.get("description", ""))[:300],
+    }
+
+
+async def _list_catalog_products(limit_count: int = 20) -> list[dict]:
+    """Fetch a compact product list directly from Firestore for broad catalog questions."""
+    db = get_firestore_client()
+    if db is None:
+        return []
+
+    def _read() -> list[dict]:
+        products = []
+        docs = db.collection("products").limit(limit_count).stream()
+        for doc in docs:
+            data = doc.to_dict() or {}
+            if data.get("enabled", True) is False:
+                continue
+            products.append(_product_summary(doc.id, data))
+        return sorted(products, key=lambda item: (item.get("type", ""), item.get("title", "")))
+
+    try:
+        return await asyncio.to_thread(_read)
+    except Exception as exc:
+        logger.warning("list_catalog_products failed: %s", exc)
+        return []
+
+
+def _is_broad_product_query(query: str) -> bool:
+    """Detect catalog-list questions that should not depend on vector similarity."""
+    normalized = (query or "").lower()
+    broad_terms = {"available", "all products", "catalog", "list", "options", "what products", "which products"}
+    return any(term in normalized for term in broad_terms)
+
+
 async def _search_products(query: str) -> dict:
     """Search products and return matching catalog data."""
+    if _is_broad_product_query(query):
+        return {"products": await _list_catalog_products()}
+
     results = await retrieve_products(query)
+    if not results:
+        return {"products": await _list_catalog_products(limit_count=6)}
+
     products = []
     for result in results:
         products.append(

@@ -1,11 +1,11 @@
 """Chat API endpoint for the Dharma support agent."""
 
 import asyncio
-import json
 import logging
 from typing import Optional
 from uuid import uuid4
 
+import orjson
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from firebase_admin import firestore
@@ -81,8 +81,8 @@ def _save_chat_messages_task(uid: str, session_id: str, user_message: str, assis
 
     def _save() -> None:
         session_ref = db.collection("users").document(uid).collection("chat_sessions").document(session_id)
-        session_ref.set({"updatedAt": firestore.SERVER_TIMESTAMP, "uid": uid}, merge=True)
         batch = db.batch()
+        batch.set(session_ref, {"updatedAt": firestore.SERVER_TIMESTAMP, "uid": uid}, merge=True)
         user_ref = session_ref.collection("messages").document()
         assistant_ref = session_ref.collection("messages").document()
         batch.set(
@@ -164,9 +164,9 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
         }
 
 
-def _sse_event(event: dict) -> str:
+def _sse_event(event: dict) -> bytes:
     """Serialize a dictionary as one server-sent event data frame."""
-    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    return b"data: " + orjson.dumps(event) + b"\n\n"
 
 
 @router.post("/chat/stream")
@@ -223,4 +223,12 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
             )
             yield _sse_event({"type": "done", "response": final_response, "session_id": session_id})
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
