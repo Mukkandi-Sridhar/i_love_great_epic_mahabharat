@@ -57,6 +57,11 @@ def _latest_message(body: ChatRequestBody) -> str:
     return ""
 
 
+async def _verify_and_check(request: Request, uid: str) -> None:
+    await verify_request_uid(request, uid, required=True)
+    await check_user_not_blocked(uid)
+
+
 def _save_chat_messages_task(uid: str, session_id: str, user_message: str, assistant_message: str, tools_called: list[str]) -> None:
     """Persist chat messages in the customer-visible messages collection."""
     if not uid or not session_id:
@@ -123,10 +128,11 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
         return {"response": "Authentication required.", "session_id": session_id}
 
     try:
-        await verify_request_uid(request, body.uid, required=True)
-        await check_user_not_blocked(body.uid)
         check_uid_rate_limit(body.uid)
-        history = await get_history(body.uid, session_id, limit=10)
+        _, history = await asyncio.gather(
+            _verify_and_check(request, body.uid),
+            get_history(body.uid, session_id, limit=6),
+        )
         agent_result = await run_agent(
             message=message,
             uid=body.uid,
@@ -181,10 +187,11 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
         final_response = "Sorry, I'm having trouble connecting. Please try again."
         tools_called: list[str] = []
         try:
-            await verify_request_uid(request, body.uid, required=True)
-            await check_user_not_blocked(body.uid)
             check_uid_rate_limit(body.uid)
-            history = await get_history(body.uid, session_id, limit=10)
+            _, history = await asyncio.gather(
+                _verify_and_check(request, body.uid),
+                get_history(body.uid, session_id, limit=6),
+            )
 
             async for event in run_agent_streaming(
                 message=message,
@@ -203,11 +210,17 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
             _save_chat_messages_task(body.uid, session_id, message, final_response, tools_called)
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, str) else "Request failed."
-            yield _sse_event({"type": "error", "message": detail})
+            yield _sse_event({"type": "error", "code": exc.status_code, "message": detail})
             yield _sse_event({"type": "done", "response": detail, "session_id": session_id})
         except Exception as exc:
             logger.warning("Chat stream failed gracefully: %s", exc)
-            yield _sse_event({"type": "error", "message": "Sorry, I'm having trouble connecting. Please try again."})
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "code": 500,
+                    "message": "Sorry, I'm having trouble connecting. Please try again.",
+                }
+            )
             yield _sse_event({"type": "done", "response": final_response, "session_id": session_id})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

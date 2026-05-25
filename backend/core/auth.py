@@ -13,6 +13,8 @@ from backend.core.firebase import get_firestore_client
 
 
 _admin_cache: dict[str, float] = {}
+_blocked_cache: dict[str, float] = {}
+_BLOCKED_CACHE_TTL = 300
 
 
 async def verify_firebase_token(token: str) -> dict:
@@ -45,6 +47,11 @@ async def verify_request_uid(request: Request, uid: str, *, required: bool = Fal
 
 async def check_user_not_blocked(uid: str) -> None:
     """Raise 403 if the user is blocked in Firestore."""
+    now = time.monotonic()
+    cached = _blocked_cache.get(uid)
+    if cached is not None and cached > now:
+        return
+
     db = get_firestore_client()
     if db is None:
         return
@@ -54,12 +61,20 @@ async def check_user_not_blocked(uid: str) -> None:
         return (doc.to_dict() or {}).get("blocked", False) if doc.exists else False
 
     try:
-        if await asyncio.to_thread(_read):
+        is_blocked = await asyncio.to_thread(_read)
+        if is_blocked:
+            _blocked_cache[uid] = 0
             raise HTTPException(status_code=403, detail="Account is blocked")
+        _blocked_cache[uid] = now + _BLOCKED_CACHE_TTL
     except HTTPException:
         raise
     except Exception:
         pass
+
+
+def invalidate_blocked_cache(uid: str) -> None:
+    """Clear one user's blocked-status cache after an admin status change."""
+    _blocked_cache.pop(uid, None)
 
 
 async def require_admin(request: Request) -> str:

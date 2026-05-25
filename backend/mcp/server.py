@@ -69,17 +69,10 @@ def _safe_transaction(transaction: dict | None) -> dict:
 
 def list_tools() -> list[dict]:
     """Return OpenAI-compatible function specs for all MCP tools."""
-    return [
+    tools = [
         {
             "name": "get_user_summary",
-            "description": (
-                "Get a quick summary of this user's account: number of orders, list of "
-                "owned product titles, and open support tickets. Call this at the start "
-                "of ANY conversation where the user's account status is relevant — e.g., "
-                "greeting a returning user, answering 'what have I bought', or deciding "
-                "whether to check orders or purchases first. This is a lightweight call; "
-                "use get_order_status or get_user_purchases for full details."
-            ),
+            "description": "Quick account snapshot: order count, owned products, open tickets. Call first on account questions.",
             "parameters": {
                 "type": "object",
                 "properties": {"uid": {"type": "string"}},
@@ -88,13 +81,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "get_order_status",
-            "description": (
-                "Fetch live order data for this user. Call this PROACTIVELY whenever the "
-                "user mentions orders, delivery, tracking, shipping, or 'where is my "
-                "product/pendrive/ebook'. Do not ask the user for their order ID first — "
-                "fetch all recent orders (omit order_id) and identify the relevant one. "
-                "Then use the result to answer, or chain into another tool if needed."
-            ),
+            "description": "Fetch live orders. Call on: order/delivery/tracking/shipping questions. Omit order_id to get recent orders.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -106,12 +93,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "get_user_purchases",
-            "description": (
-                "Fetch all products this user has purchased and their access status. Call "
-                "this PROACTIVELY when the user asks about their collection, owned products, "
-                "download access, ebook access, or pendrive contents. Also call it before "
-                "answering product-specific questions to check if the user already owns it."
-            ),
+            "description": "Fetch all purchased products and access status. Call on: collection/owned/access/download questions.",
             "parameters": {
                 "type": "object",
                 "properties": {"uid": {"type": "string"}},
@@ -120,12 +102,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "verify_payment",
-            "description": (
-                "Verify a payment transaction in real time. Call this when the user shares "
-                "a payment ID, transaction ID, or says their payment was deducted but they "
-                "got no access. Chain: verify_payment → if captured but no purchase exists → "
-                "create_support_ticket with category='payment'."
-            ),
+            "description": "Verify a payment by transaction ID or Razorpay payment ID. Call when user reports deducted payment with no access.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -137,13 +114,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "create_refund_request",
-            "description": (
-                "Create a refund ticket for physical products (pendrive, sdcard) only. "
-                "Autonomous chain: search_policies('refund policy') → get_order_status → "
-                "if physical and eligible → create_refund_request. Never ask the user to "
-                "confirm — just execute and report the ticket ID. Ebooks are non-refundable: "
-                "inform the user immediately without creating a ticket."
-            ),
+            "description": "Create refund ticket for physical products only (pendrive/sdcard). Ebooks non-refundable — inform user directly.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -158,13 +129,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "create_support_ticket",
-            "description": (
-                "Create a support ticket for any unresolved issue. Call this autonomously "
-                "when: (1) two tool attempts haven't resolved the issue, (2) the user is "
-                "frustrated or repeating themselves, (3) an order is delivered but access "
-                "is missing, (4) a payment is verified but no purchase exists. Do not ask "
-                "the user if they want a ticket — create it and share the ticket ID."
-            ),
+            "description": "Create a support ticket. Call autonomously when issue unresolved after 2 tool attempts or user is frustrated.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -182,11 +147,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "check_coupon",
-            "description": (
-                "Validate a coupon code and compute the discounted amount. Call this when "
-                "the user mentions a coupon, promo code, discount, or 'do you have an offer'. "
-                "Return the final payable amount clearly."
-            ),
+            "description": "Validate a coupon code and return discount + final amount. Call when user mentions coupon or promo code.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -198,13 +159,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "search_policies",
-            "description": (
-                "Search the company policy knowledge base. Call this BEFORE answering any "
-                "question about refunds, returns, cancellations, delivery timelines, exchange "
-                "policy, or terms. Also call it when the user asks 'what is your policy on X'. "
-                "Use the retrieved chunks to synthesize a direct answer — do not quote chunks "
-                "verbatim."
-            ),
+            "description": "Search policy knowledge base. Call before answering refund/return/shipping/cancellation questions.",
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string"}},
@@ -213,13 +168,7 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "search_products",
-            "description": (
-                "Search the live product catalog. Call this when the user asks for product "
-                "recommendations, price of a product, difference between products, what "
-                "languages are available, or 'which pendrive should I buy'. Also call it "
-                "when get_user_purchases shows a product the user is asking about — "
-                "use search_products to enrich the details."
-            ),
+            "description": "Search product catalog. Call for product recommendations, pricing, comparisons, or 'which should I buy'.",
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string"}},
@@ -227,6 +176,7 @@ def list_tools() -> list[dict]:
             },
         },
     ]
+    return tools
 
 
 def warm_tool_cache() -> list[dict]:

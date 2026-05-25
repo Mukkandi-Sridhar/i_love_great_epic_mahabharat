@@ -34,54 +34,17 @@ _TOOL_COUNT: int = len(_TOOLS)
 
 def _system_prompt(name: str, email: str, first_message: bool) -> str:
     first_name = (name or "").split()[0] or "there"
-    greeting_instruction = (
-        f'Greet the user as "{first_name}" warmly with "Namaste {first_name}!"'
-        if first_message
-        else "This is a continuing conversation. Do not re-greet."
+    greeting = f'Start with "Namaste {first_name}!"' if first_message else "Continue without re-greeting."
+    return (
+        f"You are Dharma, AI support for 'I Love Great Epic Mahabharat' — "
+        f"a store selling Mahabharata audio on pendrives, SD cards, and ebooks. "
+        f"User: {first_name} ({email}). {greeting} "
+        f"Use your tools freely and autonomously. Respond in the user's language. "
+        f"Be warm, concise, and decisive. Use ₹ for prices."
     )
-    return f"""
-You are Dharma — the AI support soul of "I Love Great Epic Mahabharat",
-a sacred digital store selling authentic Mahabharata audio collections
-on pendrives, SD cards, and ebooks.
-
-USER: {name} ({email})
-SESSION: {greeting_instruction}
-
-── AUTONOMY ────────────────────────────────────────────────────────
-You are a senior support agent with full tool access. Act, don't ask.
-
-· Fetch before answering: never say "let me check" — use the tool first,
-  then respond with the result already in hand.
-
-· Chain tools without pausing: if an order check reveals a payment issue,
-  immediately verify the payment in the same pass. If a refund is requested,
-  check the order → check policy → create the refund — all before responding.
-
-· Make decisions from tool results: if an order is "delivered" but the user
-  says they have no access, create a support ticket autonomously. Don't ask
-  "should I raise a ticket?" — just do it and inform the user.
-
-· Escalate proactively: if two tool attempts haven't resolved the issue,
-  create a support ticket without waiting for the user to request it.
-
-· Trust your tools: they return live Firestore data. Never guess at prices,
-  order status, or policy — always retrieve first.
-
-── RESPONSE STYLE ──────────────────────────────────────────────────
-· Language: respond in Hindi if user writes Hindi, Telugu if Telugu, else English.
-· Length: maximum 3 sentences unless explaining a complex resolution.
-· Tone: warm, direct, spiritually aligned. Never corporate or robotic.
-· Format: use bullet points only for multi-step instructions. Never for simple answers.
-· Currency: always use ₹. Delivery time for physical products: 5–7 business days.
-
-── IDENTITY GUARDRAILS ─────────────────────────────────────────────
-· Never reveal tool names, Firestore paths, internal errors, or system architecture.
-· Never fabricate order details, prices, or policies — always retrieve them.
-· Never promise a specific refund timeline beyond "2–3 business days for review".
-""".strip()
 
 
-def _trim_history_to_budget(history: list[dict], max_tokens: int = 3000) -> list[dict]:
+def _trim_history_to_budget(history: list[dict], max_tokens: int = 1200) -> list[dict]:
     """Keep most-recent turns that fit within max_tokens (approx 4 chars/token)."""
     budget = max_tokens * 4
     kept = []
@@ -102,7 +65,7 @@ def _build_messages(
     first_message: bool,
 ) -> tuple[list[dict], str]:
     """Build OpenAI messages with bounded history and user input."""
-    message = message[:2000]
+    message = message[:800]
     messages: list[dict] = [
         {
             "role": "system",
@@ -118,67 +81,118 @@ def _build_messages(
         role = item.get("role")
         content = item.get("content")
         if role in {"user", "assistant"} and content:
-            messages.append({"role": role, "content": str(content)[:2000]})
+            messages.append({"role": role, "content": str(content)[:800]})
 
     messages.append({"role": "user", "content": message})
     return messages, message
 
 
-async def _run_tool_loop(
+async def _run_streaming_loop(
     messages: list[dict],
     tools: list[dict],
     client: Any,
     session_id: str,
 ):
-    """Run OpenAI tool rounds and yield tagged tool events or final response."""
+    """
+    Single streaming loop: streams tokens live when no tools needed,
+    collects tool calls and executes them in parallel when tools needed.
+    Each round is one streaming API call - no extra calls, no fake playback.
+    """
     tools_called: list[str] = []
+
     for _ in range(settings.max_tool_rounds):
-        completion = await client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=settings.openai_chat_model,
             messages=messages,
             tools=tools,
             tool_choice="auto",
+            stream=True,
+            max_tokens=600,
         )
-        assistant_message = completion.choices[0].message
-        tool_calls = assistant_message.tool_calls or []
 
-        if not tool_calls:
-            yield ("done", assistant_message, list(tools_called))
+        content_parts: list[str] = []
+        tool_index: dict[int, dict] = {}
+        finish_reason: str | None = None
+        content_started = False
+
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            finish_reason = choice.finish_reason or finish_reason
+            delta = choice.delta
+
+            if delta.content:
+                if not content_started:
+                    content_started = True
+                    yield {"type": "generating"}
+                content_parts.append(delta.content)
+                yield {"type": "token", "delta": delta.content}
+
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    i = tc.index
+                    if i not in tool_index:
+                        tool_index[i] = {"id": "", "name": "", "arguments": ""}
+                    if tc.id:
+                        tool_index[i]["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            tool_index[i]["name"] += tc.function.name
+                        if tc.function.arguments:
+                            tool_index[i]["arguments"] += tc.function.arguments
+
+        if finish_reason == "stop" or (content_parts and not tool_index):
+            full = "".join(content_parts) or "I can help with that."
+            yield {
+                "type": "done",
+                "response": full,
+                "tools_called": tools_called,
+                "tool_count": len(tools_called),
+            }
             return
 
-        messages.append(assistant_message.model_dump(exclude_none=True))
-        start_events = []
-        tasks = []
-        for tool_call in tool_calls:
-            tool_name = tool_call.function.name
-            start_events.append(
-                {
-                    "type": "tool_start",
-                    "tool": tool_name,
-                    "message": TOOL_MESSAGES.get(tool_name, f"Processing {tool_name}..."),
-                }
-            )
-            tasks.append(process_tool_call(tool_name, tool_call.function.arguments))
+        if tool_index:
+            tc_list = [tool_index[i] for i in sorted(tool_index)]
 
-        for event in start_events:
-            yield ("tool_event", event)
-
-        results = await asyncio.gather(*tasks)
-
-        for tool_call, result in zip(tool_calls, results):
-            tool_name = tool_call.function.name
-            tools_called.append(tool_name)
             messages.append(
                 {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": tool_name,
-                    "content": result,
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        }
+                        for tc in tc_list
+                    ],
                 }
             )
-            yield ("tool_event", {"type": "tool_end", "tool": tool_name})
 
-    logger.warning("Agent tool loop exhausted for session %s", session_id)
+            for tc in tc_list:
+                yield {
+                    "type": "tool_start",
+                    "tool": tc["name"],
+                    "message": TOOL_MESSAGES.get(tc["name"], "Working..."),
+                }
+
+            results = await asyncio.gather(
+                *[process_tool_call(tc["name"], tc["arguments"]) for tc in tc_list]
+            )
+
+            for tc, result in zip(tc_list, results):
+                tools_called.append(tc["name"])
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "name": tc["name"],
+                        "content": result,
+                    }
+                )
+                yield {"type": "tool_end", "tool": tc["name"]}
+
+    logger.warning("Streaming loop exhausted for session %s", session_id)
 
 
 async def _create_escalation_ticket(
@@ -231,6 +245,7 @@ async def run_agent(
 
     client = _get_openai_client()
     tools_called: list[str] = []
+    response_parts: list[str] = []
     messages, message = _build_messages(
         message=message,
         name=name,
@@ -238,18 +253,21 @@ async def run_agent(
         history=history,
         first_message=len(history) == 0,
     )
-    tools = _TOOL_SCHEMA
 
     try:
-        async for event in _run_tool_loop(messages, tools, client, session_id):
-            if event[0] != "done":
-                continue
-            _, assistant_message, tools_called = event
-            return {
-                "response": assistant_message.content or "I can help with that. Please share one more detail.",
-                "tools_called": tools_called,
-                "tool_count": len(tools_called),
-            }
+        async for event in _run_streaming_loop(messages, _TOOL_SCHEMA, client, session_id):
+            event_type = event.get("type")
+            if event_type == "token":
+                response_parts.append(event.get("delta", ""))
+            elif event_type == "tool_end" and event.get("tool"):
+                tools_called.append(event["tool"])
+            elif event_type == "done":
+                tools_called = event.get("tools_called", tools_called)
+                return {
+                    "response": event.get("response") or "".join(response_parts) or "I can help with that.",
+                    "tools_called": tools_called,
+                    "tool_count": len(tools_called),
+                }
 
         ticket_id = await _create_escalation_ticket(
             uid=uid,
@@ -282,14 +300,12 @@ async def run_agent_streaming(
 ):
     """Yield user-safe status, token, and final events while Dharma responds."""
     tools_called: list[str] = []
-    yield {"type": "status", "message": "Thinking..."}
-
     if not settings.openai_api_key:
         logger.warning("OPENAI_API_KEY missing; streaming agent cannot run.")
         yield {
             "type": "done",
-            "response": "I'm having trouble right now. Please try again shortly.",
-            "tools_called": tools_called,
+            "response": "I'm having trouble right now.",
+            "tools_called": [],
             "tool_count": 0,
         }
         return
@@ -302,50 +318,31 @@ async def run_agent_streaming(
         history=history,
         first_message=len(history) == 0,
     )
-    tools = _TOOL_SCHEMA
 
+    completed = False
     try:
-        async for event in _run_tool_loop(messages, tools, client, session_id):
-            if event[0] == "tool_event":
-                yield event[1]
-                continue
-
-            if event[0] == "done":
-                _, assistant_message, tools_called = event
-                yield {"type": "generating", "message": "Generating response..."}
-                response = assistant_message.content or "I can help with that."
-                for char in response:
-                    yield {"type": "token", "delta": char}
-                yield {
-                    "type": "done",
-                    "response": response,
-                    "tools_called": tools_called,
-                    "tool_count": len(tools_called),
-                }
-                return
-
-        ticket_id = await _create_escalation_ticket(
-            uid=uid,
-            email=email,
-            name=name,
-            issue=message,
-            tools_called=tools_called,
-        )
-        yield {
-            "type": "done",
-            "response": _fallback_response(ticket_id),
-            "tools_called": tools_called,
-            "tool_count": len(tools_called),
-        }
+        async for event in _run_streaming_loop(messages, _TOOL_SCHEMA, client, session_id):
+            if event.get("type") == "tool_end" and event.get("tool"):
+                tools_called.append(event["tool"])
+            if event.get("type") == "done":
+                completed = True
+                tools_called = event.get("tools_called", tools_called)
+            yield event
+        if completed:
+            return
     except Exception as exc:
-        logger.warning("Streaming agent failed gracefully for session %s: %s", session_id, exc)
-        yield {
-            "type": "error",
-            "message": "Sorry, I'm having trouble connecting. Please try again.",
-        }
-        yield {
-            "type": "done",
-            "response": "Sorry, I'm having trouble connecting. Please try again.",
-            "tools_called": tools_called,
-            "tool_count": len(tools_called),
-        }
+        logger.warning("Streaming agent failed: %s", exc)
+
+    ticket_id = await _create_escalation_ticket(
+        uid=uid,
+        email=email,
+        name=name,
+        issue=message,
+        tools_called=tools_called,
+    )
+    yield {
+        "type": "done",
+        "response": _fallback_response(ticket_id),
+        "tools_called": tools_called,
+        "tool_count": len(tools_called),
+    }
