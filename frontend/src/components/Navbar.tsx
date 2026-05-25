@@ -13,6 +13,14 @@ import { Input } from "@/components/ui/input";
 import { db } from "@/lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
 
+const TICKER_LINES = [
+    "నా దేశం భగవద్గీత...!",
+    "నా దేశం అగ్ని పునీత సీత!",
+    "నా దేశం కరుణాంతరంగ...!",
+    "నా దేశం సంస్కార గంగ!",
+    "నమస్తే 🙏🏽",
+];
+
 const Navbar = () => {
     const location = useLocation();
     const [isScrolled, setIsScrolled] = useState(false);
@@ -23,18 +31,11 @@ const Navbar = () => {
     const [firestoreProducts, setFirestoreProducts] = useState<any[]>([]);
     const { settings } = useSettings();
 
-    const tickerLines = [
-        "నా దేశం భగవద్గీత...!",
-        "నా దేశం అగ్ని పునీత సీత!",
-        "నా దేశం కరుణాంతరంగ...!",
-        "నా దేశం సంస్కార గంగ!",
-        "నమస్తే 🙏🏽",
-    ];
     const [tickerIndex, setTickerIndex] = useState(0);
 
     useEffect(() => {
         const interval = setInterval(() => {
-            setTickerIndex(prev => (prev + 1) % tickerLines.length);
+            setTickerIndex(prev => (prev + 1) % TICKER_LINES.length);
         }, 2500);
         return () => clearInterval(interval);
     }, []);
@@ -149,7 +150,7 @@ const Navbar = () => {
                                 transition={{ duration: 0.4, ease: "easeInOut" }}
                                 className="text-[12px] leading-snug font-serif font-bold text-[#FFD700] text-center select-none line-clamp-2 w-full"
                             >
-                                {tickerLines[tickerIndex]}
+                                {TICKER_LINES[tickerIndex]}
                             </motion.span>
                         </AnimatePresence>
                     </div>
@@ -189,7 +190,7 @@ const Navbar = () => {
                                 transition={{ duration: 0.45, ease: "easeInOut" }}
                                 className="text-lg font-serif font-bold text-[#FFD700] tracking-widest text-center select-none"
                             >
-                                {tickerLines[tickerIndex]}
+                                {TICKER_LINES[tickerIndex]}
                             </motion.span>
                         </AnimatePresence>
                     </div>

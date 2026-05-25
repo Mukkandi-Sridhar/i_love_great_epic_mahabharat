@@ -68,8 +68,6 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      // Auto-save profile to Firestore on every login
-      await saveUserProfile(result.user);
       toast({ title: "Welcome!", description: `Signed in as ${result.user.displayName || result.user.email}` });
     } catch (error: any) {
       toast({

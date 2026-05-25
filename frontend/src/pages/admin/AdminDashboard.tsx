@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, query, orderBy, limit, Timestamp } from "firebase/firestore";
+import { collection, getCountFromServer, getDocs, query, orderBy, limit, Timestamp, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Package, DollarSign, Ticket, Users, BookOpen, Key, Bell, Settings, ArrowRight } from "lucide-react";
 import { SkeletonCard } from "@/components/SkeletonCard";
@@ -28,41 +28,40 @@ const AdminDashboard = () => {
     useEffect(() => {
         const load = async () => {
             try {
-                const [ordersSnap, ticketsSnap, usersSnap] = await Promise.all([
-                    getDocs(collection(db, "orders_index")),
-                    getDocs(collection(db, "tickets")),
-                    getDocs(collection(db, "users")),
+                const [ordersCount, openTicketsCount, usersCount, recentSnap] = await Promise.all([
+                    getCountFromServer(collection(db, "orders_index")),
+                    getCountFromServer(query(collection(db, "tickets"), where("status", "==", "open"))),
+                    getCountFromServer(collection(db, "users")),
+                    getDocs(query(collection(db, "orders_index"), orderBy("createdAt", "desc"), limit(100))),
                 ]);
 
                 let revenue = 0;
                 let books = 0;
                 const daily: Record<string, number> = {};
 
-                ordersSnap.forEach((d) => {
+                recentSnap.forEach((d) => {
                     const data = d.data();
                     const amount = data.amount || 0;
                     revenue += amount;
                     if ((data.productType || "").toLowerCase() === "ebook") books++;
 
-                    // Group by date for chart
                     if (data.createdAt) {
-                        const date = (data.createdAt as Timestamp).toDate().toLocaleDateString();
+                        const date = (data.createdAt as Timestamp).toDate().toISOString().slice(0, 10);
                         daily[date] = (daily[date] || 0) + amount;
                     }
                 });
 
                 setStats({
-                    totalOrders: ordersSnap.size,
+                    totalOrders: ordersCount.data().count,
                     totalRevenue: revenue,
-                    openTickets: ticketsSnap.docs.filter(d => d.data().status === "open").length,
-                    totalUsers: usersSnap.size,
+                    openTickets: openTicketsCount.data().count,
+                    totalUsers: usersCount.data().count,
                     totalBooks: books,
                 });
 
-                // Convert daily record to sorted array for chart
                 const sortedDaily = Object.entries(daily)
                     .map(([date, amount]) => ({ date, amount }))
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    .sort((a, b) => a.date.localeCompare(b.date))
                     .slice(-7);
                 setDailyRevenue(sortedDaily);
 
@@ -80,6 +79,7 @@ const AdminDashboard = () => {
         { label: "Total Revenue", value: `₹${stats.totalRevenue.toLocaleString()}`, icon: DollarSign, color: "text-green-400", link: "/admin/orders" },
         { label: "Books Sold", value: stats.totalBooks, icon: BookOpen, color: "text-orange-400", link: "/admin/orders" },
         { label: "Open Tickets", value: stats.openTickets, icon: Ticket, color: "text-yellow-400", link: "/admin/tickets" },
+        { label: "Total Users", value: stats.totalUsers, icon: Users, color: "text-purple-400", link: "/admin/users" },
     ];
 
     const quickLinks = [
@@ -111,15 +111,15 @@ const AdminDashboard = () => {
                 </div>
 
                 {loading ? (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {Array.from({ length: 4 }).map((_, index) => (
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        {Array.from({ length: 5 }).map((_, index) => (
                             <SkeletonCard key={index} />
                         ))}
                     </div>
                 ) : (
                     <div className="space-y-8">
                         {/* Stats Cards */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             {cards.map(({ label, value, icon: Icon, color, link }) => (
                                 <Link key={label} to={link} className="block bg-white/5 border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all group">
                                     <div className={`mb-3 ${color}`}><Icon className="w-7 h-7" /></div>
@@ -143,7 +143,9 @@ const AdminDashboard = () => {
                                                 className="w-full bg-green-500/30 group-hover:bg-green-500/50 rounded-t-sm transition-all"
                                                 style={{ height: `${Math.max(10, (d.amount / (Math.max(...dailyRevenue.map(v => v.amount)) || 1)) * 100)}%` }}
                                             />
-                                            <div className="text-[10px] text-gray-400 mt-2 truncate w-full text-center">{d.date.split('/')[0]}/{d.date.split('/')[1]}</div>
+                                            <div className="text-[10px] text-gray-400 mt-2 text-center">
+                                                {new Date(d.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                                            </div>
                                         </div>
                                     )) : (
                                         <div className="w-full h-full flex items-center justify-center text-gray-500 italic">No sales data yet</div>

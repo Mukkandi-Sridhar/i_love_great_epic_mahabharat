@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query, startAfter } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { ArrowLeft, ChevronDown, ChevronUp, Save, Truck, ExternalLink } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, Save, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { BACKEND_URL, adminHeaders } from "@/services/api";
@@ -32,25 +32,43 @@ const statusColor: Record<string, string> = {
     processing: "bg-orange-500/20 text-orange-400",
     shipped: "bg-blue-500/20 text-blue-400",
     delivered: "bg-purple-500/20 text-purple-400",
+    cancelled: "bg-red-500/20 text-red-400",
+    refunded: "bg-gray-500/20 text-gray-400",
 };
+
+const PAGE_SIZE = 20;
 
 const AdminOrders = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [filtered, setFiltered] = useState<Order[]>([]);
+    const [orderEdits, setOrderEdits] = useState<Record<string, { status: string; tracking: string }>>({});
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [expanded, setExpanded] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [lastDoc, setLastDoc] = useState<any>(null);
+    const [hasMore, setHasMore] = useState(true);
     const { toast } = useToast();
     usePageTitle("Admin Orders");
 
-    const loadOrders = async () => {
+    const getEdit = (o: Order) => orderEdits[o.id] ?? { status: o.status, tracking: o.trackingNumber || "" };
+
+    const loadOrders = async (append = false) => {
         setLoading(true);
         try {
-            const snap = await getDocs(query(collection(db, "orders_index"), orderBy("createdAt", "desc")));
+            let q = query(
+                collection(db, "orders_index"),
+                orderBy("createdAt", "desc"),
+                limit(PAGE_SIZE)
+            );
+            if (append && lastDoc) q = query(q, startAfter(lastDoc));
+
+            const snap = await getDocs(q);
             const data: Order[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order));
-            setOrders(data);
-            setFiltered(data);
+            setOrders((prev) => append ? [...prev, ...data] : data);
+            setFiltered((prev) => append ? [...prev, ...data] : data);
+            setLastDoc(snap.docs[snap.docs.length - 1] || null);
+            setHasMore(snap.docs.length === PAGE_SIZE);
         } catch (e) {
             toast({ title: "Failed to load orders", variant: "destructive" });
         } finally {
@@ -81,6 +99,11 @@ const AdminOrders = () => {
 
             if (res.ok) {
                 toast({ title: "Order Updated", description: `Order ${orderId} is now ${status}` });
+                setOrderEdits((prev) => {
+                    const next = { ...prev };
+                    delete next[orderId];
+                    return next;
+                });
                 loadOrders();
             } else {
                 toast({ title: "Update Failed", variant: "destructive" });
@@ -97,7 +120,13 @@ const AdminOrders = () => {
             o.id, o.userName, o.email, o.phone, o.productTitle,
             `₹${o.amount}`, o.status, o.trackingNumber || ""
         ]));
-        const csv = rows.map((r) => r.join(",")).join("\n");
+        const escapeCSV = (val: any) => {
+            const str = String(val ?? "");
+            return str.includes(",") || str.includes('"') || str.includes("\n")
+                ? `"${str.replace(/"/g, '""')}"`
+                : str;
+        };
+        const csv = rows.map((r) => r.map(escapeCSV).join(",")).join("\n");
         const a = document.createElement("a"); a.href = "data:text/csv," + encodeURIComponent(csv);
         a.download = "orders.csv"; a.click();
     };
@@ -120,13 +149,16 @@ const AdminOrders = () => {
                         className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white focus:outline-none">
                         <option value="all">All Status</option>
                         <option value="paid">Paid</option>
+                        <option value="pending">Pending</option>
                         <option value="processing">Processing</option>
                         <option value="shipped">Shipped</option>
                         <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                        <option value="refunded">Refunded</option>
                     </select>
                 </div>
 
-                {loading ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
+                {loading && orders.length === 0 ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
                     <div className="space-y-4">
                         {filtered.length === 0 && <p className="text-center text-gray-400 py-10">No orders yet. Start your spiritual journey →</p>}
                         {filtered.map((o) => (
@@ -183,21 +215,29 @@ const AdminOrders = () => {
                                                     <div>
                                                         <label className="text-[10px] text-gray-400 block mb-1">Set Status</label>
                                                         <select
-                                                            defaultValue={o.status}
-                                                            id={`status-${o.id}`}
-                                                            className="w-full bg-black/40 border-white/10 border rounded-lg h-9 px-3 text-sm"
+                                                            value={getEdit(o).status}
+                                                            onChange={(e) => setOrderEdits((prev) => ({
+                                                                ...prev,
+                                                                [o.id]: { ...getEdit(o), status: e.target.value },
+                                                            }))}
+                                                            className="w-full bg-black/40 border-white/10 border rounded-lg h-9 px-3 text-sm text-white"
                                                         >
                                                             <option value="paid">Paid</option>
                                                             <option value="processing">Processing</option>
                                                             <option value="shipped">Shipped</option>
                                                             <option value="delivered">Delivered</option>
+                                                            <option value="cancelled">Cancelled</option>
+                                                            <option value="refunded">Refunded</option>
                                                         </select>
                                                     </div>
                                                     <div>
                                                         <label className="text-[10px] text-gray-400 block mb-1">Tracking Number</label>
                                                         <input
-                                                            id={`tracking-${o.id}`}
-                                                            defaultValue={o.trackingNumber}
+                                                            value={getEdit(o).tracking}
+                                                            onChange={(e) => setOrderEdits((prev) => ({
+                                                                ...prev,
+                                                                [o.id]: { ...getEdit(o), tracking: e.target.value },
+                                                            }))}
                                                             placeholder="e.g. DTDC123456"
                                                             className="w-full bg-black/40 border-white/10 border rounded-lg h-9 px-3 text-sm text-white"
                                                         />
@@ -206,9 +246,8 @@ const AdminOrders = () => {
                                                         className="w-full gap-2"
                                                         size="sm"
                                                         onClick={() => {
-                                                            const status = (document.getElementById(`status-${o.id}`) as HTMLSelectElement).value;
-                                                            const tracking = (document.getElementById(`tracking-${o.id}`) as HTMLInputElement).value;
-                                                            updateOrder(o.id, status, tracking, "");
+                                                            const edit = getEdit(o);
+                                                            updateOrder(o.id, edit.status, edit.tracking, "");
                                                         }}
                                                     >
                                                         <Save className="w-4 h-4" /> Save Changes
@@ -220,6 +259,15 @@ const AdminOrders = () => {
                                 )}
                             </div>
                         ))}
+                        {hasMore && !loading && (
+                            <button
+                                type="button"
+                                onClick={() => loadOrders(true)}
+                                className="w-full py-3 text-sm text-gray-400 hover:text-white border border-white/10 rounded-xl hover:border-white/20 transition-all"
+                            >
+                                Load more orders
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

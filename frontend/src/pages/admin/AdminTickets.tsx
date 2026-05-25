@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, orderBy, query, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query, startAfter, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ArrowLeft, MessageSquare, CheckCircle, Clock, Send, Instagram, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { BACKEND_URL, adminHeaders } from "@/services/api";
 import { SkeletonCard } from "@/components/SkeletonCard";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { cn } from "@/lib/utils";
 
 interface Ticket {
     id: string;
@@ -27,14 +28,25 @@ const AdminTickets = () => {
     const [loading, setLoading] = useState(true);
     const [resolving, setResolving] = useState<string | null>(null);
     const [replyText, setReplyText] = useState<Record<string, string>>({});
+    const [statusFilter, setStatusFilter] = useState<"all" | "open" | "resolved">("open");
+    const [lastDoc, setLastDoc] = useState<any>(null);
+    const [hasMore, setHasMore] = useState(true);
     const { toast } = useToast();
     usePageTitle("Admin Tickets");
 
-    const loadTickets = async () => {
+    const loadTickets = async (append = false) => {
         setLoading(true);
         try {
-            const snap = await getDocs(query(collection(db, "tickets"), orderBy("createdAt", "desc")));
-            setTickets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Ticket)));
+            let q = statusFilter === "all"
+                ? query(collection(db, "tickets"), orderBy("createdAt", "desc"), limit(25))
+                : query(collection(db, "tickets"), where("status", "==", statusFilter), orderBy("createdAt", "desc"), limit(25));
+            if (append && lastDoc) q = query(q, startAfter(lastDoc));
+
+            const snap = await getDocs(q);
+            const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Ticket));
+            setTickets((prev) => append ? [...prev, ...data] : data);
+            setLastDoc(snap.docs[snap.docs.length - 1] || null);
+            setHasMore(snap.docs.length === 25);
         } catch (e) {
             toast({ title: "Failed to load tickets", variant: "destructive" });
         } finally {
@@ -42,7 +54,7 @@ const AdminTickets = () => {
         }
     };
 
-    useEffect(() => { loadTickets(); }, []);
+    useEffect(() => { loadTickets(); }, [statusFilter]);
 
     const sendReplyAndResolve = async (ticket: Ticket) => {
         const reply = replyText[ticket.id];
@@ -72,6 +84,8 @@ const AdminTickets = () => {
         }
     };
 
+    const filtered = statusFilter === "all" ? tickets : tickets.filter((t) => t.status === statusFilter);
+
     return (
         <div className="min-h-screen bg-background p-6 text-white">
             <div className="max-w-5xl mx-auto">
@@ -84,10 +98,33 @@ const AdminTickets = () => {
                     </div>
                 </div>
 
-                {loading ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
+                <div className="flex gap-2 mb-6">
+                    {(["all", "open", "resolved"] as const).map((s) => (
+                        <button
+                            key={s}
+                            type="button"
+                            onClick={() => {
+                                setTickets([]);
+                                setLastDoc(null);
+                                setHasMore(true);
+                                setStatusFilter(s);
+                            }}
+                            className={cn(
+                                "px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all",
+                                statusFilter === s
+                                    ? "bg-primary text-black"
+                                    : "bg-white/5 text-gray-400 hover:bg-white/10"
+                            )}
+                        >
+                            {s}
+                        </button>
+                    ))}
+                </div>
+
+                {loading && tickets.length === 0 ? <div className="grid md:grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)}</div> : (
                     <div className="grid gap-6">
-                        {tickets.length === 0 && <p className="text-center text-gray-500 py-20 italic">No support tickets found.</p>}
-                        {tickets.map((t) => (
+                        {filtered.length === 0 && <p className="text-center text-gray-500 py-20 italic">No support tickets found.</p>}
+                        {filtered.map((t) => (
                             <div key={t.id} className={`flex flex-col rounded-2xl border transition-all overflow-hidden ${t.status === "open" ? "bg-white/5 border-yellow-500/20 shadow-lg shadow-yellow-500/5" : "bg-white/[0.02] border-white/5 opacity-80"}`}>
                                 <div className="p-5 flex flex-col md:flex-row gap-6">
                                     <div className="flex-1 space-y-4">
@@ -146,6 +183,15 @@ const AdminTickets = () => {
                                 </div>
                             </div>
                         ))}
+                        {hasMore && !loading && (
+                            <button
+                                type="button"
+                                onClick={() => loadTickets(true)}
+                                className="w-full py-3 text-sm text-gray-400 hover:text-white border border-white/10 rounded-xl hover:border-white/20 transition-all"
+                            >
+                                Load more tickets
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

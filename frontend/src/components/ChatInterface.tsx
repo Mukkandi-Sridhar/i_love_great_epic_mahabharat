@@ -528,23 +528,24 @@ export const ChatInterface = () => {
                                     >
                                         {msg.role === "assistant" ? (
                                             <>
-                                                <ReactMarkdown
-                                                    className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-strong:text-primary/90 prose-strong:font-semibold prose-p:leading-relaxed"
-                                                    components={{
-                                                        a: ({ href, children }) => (
-                                                            <a
-                                                                href={href}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-primary underline underline-offset-2 hover:opacity-80"
-                                                            >
-                                                                {children}
-                                                            </a>
-                                                        ),
-                                                    }}
-                                                >
-                                                    {msg.content}
-                                                </ReactMarkdown>
+                                                <div className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-strong:text-primary/90 prose-strong:font-semibold prose-p:leading-relaxed">
+                                                    <ReactMarkdown
+                                                        components={{
+                                                            a: ({ href, children }) => (
+                                                                <a
+                                                                    href={href}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-primary underline underline-offset-2 hover:opacity-80"
+                                                                >
+                                                                    {children}
+                                                                </a>
+                                                            ),
+                                                        }}
+                                                    >
+                                                        {msg.content}
+                                                    </ReactMarkdown>
+                                                </div>
                                                 {isStreaming && (
                                                     <motion.span
                                                         animate={{ opacity: [1, 0] }}

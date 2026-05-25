@@ -4,6 +4,7 @@ import Navbar from './Navbar';
 import Footer from './Footer';
 import IntroOverlay from './IntroOverlay';
 import { cn } from '@/lib/utils';
+import { useSettings } from '@/context/SettingsContext';
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,6 +15,8 @@ let introShown = false;
 
 const Layout = ({ children }: LayoutProps) => {
   const { pathname } = useLocation();
+  const { settings } = useSettings();
+  const hasBanner = !!settings?.bannerEnabled;
   const [showIntro, setShowIntro] = useState(false);
 
   useEffect(() => {
@@ -40,7 +43,11 @@ const Layout = ({ children }: LayoutProps) => {
       <Navbar />
       <main className={cn(
         "flex-grow flex flex-col pb-20 md:pb-0",
-        !(pathname === '/' || pathname === '/explore') && "pt-14 md:pt-20"
+        !(pathname === '/' || pathname === '/explore') && (
+          hasBanner
+            ? "pt-[calc(3.5rem+2.5rem)] md:pt-[calc(5rem+2.5rem)]"
+            : "pt-14 md:pt-20"
+        )
       )}>
 
         {children}
