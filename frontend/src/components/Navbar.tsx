@@ -4,7 +4,7 @@ import { Search, ShoppingBag, Menu, X, User, ArrowRight, Compass, Store, Headpho
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { useSettings } from '@/context/SettingsContext';
+import { useSettings } from '@/contexts/SettingsContext';
 import logo from '@/assets/logo.png';
 import { allProducts } from '@/data/products';
 import { SearchIndex } from '@/lib/search';

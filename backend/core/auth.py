@@ -24,7 +24,7 @@ _TOKEN_CACHE_MAX = 2000
 
 
 def _evict_oldest(cache: dict, max_size: int) -> None:
-    if len(cache) > max_size:
+    while len(cache) > max_size:
         oldest = next(iter(cache))
         del cache[oldest]
 
@@ -138,8 +138,12 @@ async def require_admin(request: Request) -> str:
 
     if len(_admin_cache) > 200:
         expired = [key for key, value in _admin_cache.items() if value <= now]
-        for key in expired:
-            del _admin_cache[key]
+        if expired:
+            for key in expired:
+                del _admin_cache[key]
+        else:
+            oldest = next(iter(_admin_cache))
+            del _admin_cache[oldest]
 
     def _is_admin() -> bool:
         refs = [

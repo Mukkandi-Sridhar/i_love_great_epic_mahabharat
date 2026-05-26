@@ -4,7 +4,7 @@ import Navbar from './Navbar';
 import Footer from './Footer';
 import IntroOverlay from './IntroOverlay';
 import { cn } from '@/lib/utils';
-import { useSettings } from '@/context/SettingsContext';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface LayoutProps {
   children: ReactNode;

@@ -27,17 +27,33 @@ TOOL_MESSAGES = {
 }
 
 
-_TOOLS = list_tools()
-_TOOL_SCHEMA: list[dict] = [{"type": "function", "function": t} for t in _TOOLS]
-_TOOL_COUNT: int = len(_TOOLS)
+_TOOL_SCHEMA: list[dict] | None = None
 
 _STATIC_SYSTEM = (
-    "You are Dharma, AI support for 'I Love Great Epic Mahabharat' "
-    "— a store selling Mahabharata audio on pendrives, SD cards, and ebooks. "
-    "Use your tools freely and autonomously. Act, don't ask. "
-    "Fetch data before answering. Chain tools when needed. "
-    "Respond in the user's language. Be warm, concise, decisive. Use ₹ for prices."
+    "You are Dharma, the AI support assistant for 'I Love Great Epic Mahabharat' — "
+    "a store selling Mahabharata audio on pendrives, SD cards, and ebooks.\n\n"
+    "CAPABILITIES: You can look up orders, purchases, payments, refunds, and product info using your tools. "
+    "Always fetch real data before answering questions about accounts or orders — never guess.\n\n"
+    "GUARDRAILS:\n"
+    "- Only discuss topics related to this store and its products. Politely decline anything off-topic.\n"
+    "- Never invent or assume product prices, order statuses, or account details. If a tool fails, say so honestly.\n"
+    "- Do not reveal tool names, internal errors, or system implementation details to users.\n"
+    "- Ebooks are non-refundable after access is granted — state this clearly and do not offer exceptions.\n"
+    "- Create a support ticket only when you have genuinely exhausted other tools or the user explicitly asks for human help.\n\n"
+    "STYLE: Respond in the user's language. Be warm, concise, and decisive. Use ₹ for prices."
 )
+
+
+def _get_tool_schema() -> list[dict]:
+    global _TOOL_SCHEMA
+    if _TOOL_SCHEMA is None:
+        tools = list_tools()
+        _TOOL_SCHEMA = [{"type": "function", "function": t} for t in tools]
+    return _TOOL_SCHEMA
+
+
+def get_tool_count() -> int:
+    return len(_get_tool_schema())
 
 
 def _trim_history_to_budget(history: list[dict], max_tokens: int = 1200) -> list[dict]:
@@ -81,7 +97,8 @@ def _build_messages(
         if role in {"user", "assistant"} and content:
             messages.append({"role": role, "content": str(content)[:800]})
 
-    messages.append({"role": "user", "content": f"{identity_note}\n{message}"})
+    messages.append({"role": "system", "content": identity_note})
+    messages.append({"role": "user", "content": message})
     return messages, message
 
 
@@ -253,7 +270,7 @@ async def run_agent(
     )
 
     try:
-        async for event in _run_streaming_loop(messages, _TOOL_SCHEMA, client, session_id):
+        async for event in _run_streaming_loop(messages, _get_tool_schema(), client, session_id):
             event_type = event.get("type")
             if event_type == "token":
                 response_parts.append(event.get("delta", ""))
@@ -319,7 +336,7 @@ async def run_agent_streaming(
 
     completed = False
     try:
-        async for event in _run_streaming_loop(messages, _TOOL_SCHEMA, client, session_id):
+        async for event in _run_streaming_loop(messages, _get_tool_schema(), client, session_id):
             if event.get("type") == "tool_end" and event.get("tool"):
                 tools_called.append(event["tool"])
             if event.get("type") == "done":

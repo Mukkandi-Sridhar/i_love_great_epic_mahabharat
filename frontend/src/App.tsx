@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ReactNode, Suspense, lazy } from "react";
 import { FirebaseProvider } from "./contexts/FirebaseContext";
-import { SettingsProvider, useSettings } from "./context/SettingsContext";
+import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
 
 // Lazy Load Pages
 // Lazy Load Pages

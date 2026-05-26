@@ -102,12 +102,12 @@ def list_tools() -> list[dict]:
         },
         {
             "name": "verify_payment",
-            "description": "Verify a payment by transaction ID or Razorpay payment ID. Call when user reports deducted payment with no access.",
+            "description": "Verify a payment. ONLY call when the user provides a specific transaction ID or Razorpay payment ID (starts with 'pay_'). Do NOT call speculatively.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "transaction_id": {"type": "string", "description": "Firestore transaction ID"},
-                    "razorpay_payment_id": {"type": "string", "description": "Razorpay payment ID (rzp_...)"},
+                    "transaction_id": {"type": "string", "description": "Firestore transaction ID from order confirmation"},
+                    "razorpay_payment_id": {"type": "string", "description": "Razorpay payment ID, starts with pay_"},
                 },
                 "required": [],
             },
@@ -341,18 +341,22 @@ async def _get_user_purchases(uid: str) -> dict:
         return {"purchases": [], "total_count": 0}
 
 
-async def _verify_payment(transaction_id: str) -> dict:
-    """Verify a stored checkout transaction from Firestore."""
-    transaction_id = (transaction_id or "").strip()
-    if not transaction_id:
-        return {"error": "Please share a transaction ID."}
+async def _verify_payment(payment_ref: str) -> dict:
+    """Verify a payment by its stored ID.
+
+    Accepts either a Firestore transaction_id or a Razorpay payment ID - both
+    are stored as the document key in the transactions_index collection.
+    """
+    payment_ref = (payment_ref or "").strip()
+    if not payment_ref:
+        return {"error": "Please share a transaction ID or Razorpay payment ID."}
 
     db = get_firestore_client()
     if db is None:
         return {"error": "Could not verify payment right now."}
 
     def _read() -> dict:
-        transaction = db.collection("transactions_index").document(transaction_id).get()
+        transaction = db.collection("transactions_index").document(payment_ref).get()
         if not transaction.exists:
             return {"error": "Transaction not found. Please check your transaction ID."}
 

@@ -15,7 +15,7 @@ logger = logging.getLogger("ChatbotBackend.rag.retrieve")
 MIN_SCORE = 0.30
 _embed_cache: dict[str, list[float]] = {}
 _embed_pending: dict[str, asyncio.Task[list[float] | None]] = {}
-_EMBED_CACHE_MAX = 32
+_EMBED_CACHE_MAX = 512
 
 
 async def _fetch_embedding(query: str) -> list[float] | None:

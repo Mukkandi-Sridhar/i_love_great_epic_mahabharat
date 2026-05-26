@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from firebase_admin import firestore
 from pydantic import BaseModel, field_validator
 
-from backend.agent.brain import _TOOL_COUNT, run_agent, run_agent_streaming
+from backend.agent.brain import get_tool_count, run_agent, run_agent_streaming
 from backend.agent.memory import append_fallback_turns, get_history
 from backend.core.auth import check_user_not_blocked, verify_request_uid
 from backend.core.config import settings
@@ -194,7 +194,7 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
         check_uid_rate_limit(body.uid)
         _, history = await asyncio.gather(
             _verify_and_check(request, body.uid),
-            get_history(body.uid, session_id, limit=6),
+            get_history(body.uid, session_id, limit=settings.history_limit),
         )
         agent_result = await run_agent(
             message=message,
@@ -211,7 +211,7 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
             "session_id": session_id,
             "metadata": {
                 "model": settings.openai_chat_model,
-                "toolsAvailable": _TOOL_COUNT,
+                "toolsAvailable": get_tool_count(),
                 "toolsCalled": agent_result["tools_called"],
                 "toolCount": agent_result["tool_count"],
                 "cached": False,
@@ -253,7 +253,7 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
             check_uid_rate_limit(body.uid)
             _, history = await asyncio.gather(
                 _verify_and_check(request, body.uid),
-                get_history(body.uid, session_id, limit=6),
+                get_history(body.uid, session_id, limit=settings.history_limit),
             )
 
             async for event in run_agent_streaming(

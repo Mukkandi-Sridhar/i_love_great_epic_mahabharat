@@ -32,7 +32,7 @@ from backend.api.webhook import router as webhook_router
 from backend.core.auth import verify_request_uid
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
-from backend.core.rate_limit import limiter
+from backend.core.rate_limit import RATE_LIMIT_SINGLE_INSTANCE_WARNING, limiter
 from backend.mcp.server import warm_tool_cache
 from backend.rag.ingest import close_chroma, ingest_policies, ingest_products
 
@@ -63,6 +63,12 @@ async def lifespan(app: FastAPI):
     executor = ThreadPoolExecutor(max_workers=40, thread_name_prefix="firestore")
     loop = asyncio.get_running_loop()
     loop.set_default_executor(executor)
+    try:
+        web_concurrency = int(os.getenv("WEB_CONCURRENCY", "1") or "1")
+    except ValueError:
+        web_concurrency = 1
+    if web_concurrency > 1:
+        logger.warning(RATE_LIMIT_SINGLE_INSTANCE_WARNING)
 
     async def _warm_resources() -> None:
         try:
@@ -188,6 +194,7 @@ def _verify_razorpay_signature(
 @limiter.limit("20/minute")
 async def create_razorpay_order(request: Request, body: CreateRazorpayOrderRequest):
     """Create a Razorpay order server-side."""
+    await verify_request_uid(request, body.uid, required=True)
     if not settings.razorpay_key_id or not settings.razorpay_key_secret:
         raise HTTPException(status_code=503, detail="Payment gateway is not configured")
     if body.amount <= 0:

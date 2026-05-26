@@ -75,12 +75,37 @@ async def razorpay_webhook(
         product_title = notes.get("product_title", product_id or "Purchased product")
 
         if event_name == "payment.captured":
+            if order_id and uid:
+                order_snap = db.collection("orders_index").document(order_id).get()
+                if order_snap.exists:
+                    stored_uid = (order_snap.to_dict() or {}).get("uid")
+                    if stored_uid and stored_uid != uid:
+                        logger.warning(
+                            "Webhook uid mismatch for order %s: notes=%s stored=%s",
+                            order_id,
+                            uid,
+                            stored_uid,
+                        )
+                        uid = stored_uid
             if order_id:
                 db.collection("orders_index").document(order_id).set(
                     {
                         "status": "paid",
                         "razorpayPaymentId": payment_id,
                         "amount": amount,
+                        "updatedAt": firestore.SERVER_TIMESTAMP,
+                    },
+                    merge=True,
+                )
+            if uid and order_id:
+                db.collection("users").document(uid).collection("orders").document(order_id).set(
+                    {
+                        "status": "paid",
+                        "razorpayPaymentId": payment_id,
+                        "amount": amount,
+                        "productId": product_id,
+                        "productType": product_type,
+                        "productTitle": product_title,
                         "updatedAt": firestore.SERVER_TIMESTAMP,
                     },
                     merge=True,
@@ -119,13 +144,15 @@ async def razorpay_webhook(
                     merge=True,
                 )
             if uid:
-                db.collection("users").document(uid).collection("notifications").add(
+                fail_notif_id = payment_id or f"fail-{order_id or 'unknown'}"
+                db.collection("users").document(uid).collection("notifications").document(fail_notif_id).set(
                     {
                         "title": "Payment Failed",
                         "message": "Your payment failed. Please try again.",
                         "read": False,
                         "createdAt": firestore.SERVER_TIMESTAMP,
-                    }
+                    },
+                    merge=True,
                 )
     except Exception as exc:
         logger.error("Razorpay webhook processing failed after acceptance: %s", exc)
