@@ -1,13 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Mic } from "lucide-react";
+import { Send, Mic, MessageSquarePlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import { chatService, ChatMessage } from "@/services/chat";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 
 interface SpeechRecognition extends EventTarget {
     continuous: boolean;
@@ -45,6 +43,17 @@ const toolDisplayName = (tool?: string) => {
 };
 
 const createMessageId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const createSessionId = (uid?: string) => `${uid || "guest"}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const chatStorageKey = (uid: string) => `dharma_chat_session_${uid}`;
+const greetingMessage = (name?: string): ChatMessage => {
+    const firstName = (name || "").split(" ")[0];
+    return {
+        id: "greeting-0",
+        role: "assistant",
+        content: firstName ? `Namaste ${firstName}! How can I assist you today?` : "Namaste! How can I help you today?",
+        timestamp: Date.now(),
+    };
+};
 
 export const ChatInterface = () => {
     const { user } = useFirebase();
@@ -77,7 +86,6 @@ export const ChatInterface = () => {
     const tokenBufferRef = useRef<string>("");
     const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
-    const greetingSet = useRef(false);
 
     const scrollToBottom = () => {
         const container = containerRef.current;
@@ -167,40 +175,22 @@ export const ChatInterface = () => {
                 },
             ]);
             setShowQuickQuestions(true);
-            greetingSet.current = false;
             return;
         }
 
-        const storageKey = `dharma_chat_session_${user.uid}`;
+        const storageKey = chatStorageKey(user.uid);
         const existingSession = localStorage.getItem(storageKey);
-        const nextSession = existingSession || `${user.uid}_${Date.now()}`;
+        const nextSession = existingSession || createSessionId(user.uid);
         if (!existingSession) localStorage.setItem(storageKey, nextSession);
         setSessionId(nextSession);
-
-        if (greetingSet.current) return;
 
         let cancelled = false;
         const loadPersistedMessages = async () => {
             try {
-                const messagesQuery = query(
-                    collection(db, "users", user.uid, "chat_sessions", nextSession, "messages"),
-                    orderBy("timestamp", "desc"),
-                    limit(20)
-                );
-                const snap = await getDocs(messagesQuery);
+                const history = await chatService.getHistory(user.uid, nextSession, 50);
                 if (cancelled) return;
 
-                const persisted = snap.docs
-                    .reverse()
-                    .map((doc) => {
-                        const data = doc.data();
-                        return {
-                            id: doc.id,
-                            role: data.role as ChatMessage["role"],
-                            content: data.content as string,
-                            timestamp: data.timestamp?.toMillis?.() || Date.now(),
-                        };
-                    })
+                const persisted = history.messages
                     .filter((item) => (item.role === "user" || item.role === "assistant") && item.content);
 
                 if (persisted.length > 0) {
@@ -218,9 +208,12 @@ export const ChatInterface = () => {
                     ]);
                     setShowQuickQuestions(true);
                 }
-                greetingSet.current = true;
             } catch {
                 if (!cancelled) {
+                    const freshSession = createSessionId(user.uid);
+                    localStorage.setItem(storageKey, freshSession);
+                    setSessionId(freshSession);
+                    setMessages([greetingMessage(user.displayName || user.email?.split("@")[0])]);
                     setShowQuickQuestions(true);
                 }
             }
@@ -231,6 +224,22 @@ export const ChatInterface = () => {
             cancelled = true;
         };
     }, [user]);
+
+    const startNewChat = () => {
+        if (isLoading) return;
+        stopListening();
+        stopFlushTimer(false);
+        const freshSession = createSessionId(user?.uid);
+        if (user?.uid) {
+            localStorage.setItem(chatStorageKey(user.uid), freshSession);
+        }
+        setSessionId(freshSession);
+        setMessages([greetingMessage(userName)]);
+        setShowQuickQuestions(true);
+        setInput("");
+        setAgentStatus(null);
+        setActiveTools([]);
+    };
 
     const resetSilenceTimer = () => {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -472,6 +481,16 @@ export const ChatInterface = () => {
                 </div>
                 {user && (
                     <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <button
+                            type="button"
+                            onClick={startNewChat}
+                            disabled={isLoading}
+                            aria-label="Start new chat"
+                            title="New chat"
+                            className="w-8 h-8 rounded-full border border-white/10 bg-white/[0.03] text-gray-400 hover:text-primary hover:border-primary/30 hover:bg-primary/10 disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:border-white/10 disabled:hover:bg-white/[0.03] transition-all flex items-center justify-center"
+                        >
+                            <MessageSquarePlus className="w-4 h-4" />
+                        </button>
                         {userPhoto ? (
                             <img src={userPhoto} alt="" className="w-7 h-7 rounded-full object-cover opacity-70" />
                         ) : (

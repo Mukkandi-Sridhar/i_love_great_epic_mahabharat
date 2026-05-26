@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import uuid4
 
 import orjson
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from firebase_admin import firestore
 from pydantic import BaseModel, field_validator
@@ -62,6 +62,55 @@ async def _verify_and_check(request: Request, uid: str) -> None:
     await check_user_not_blocked(uid)
 
 
+def _timestamp_ms(value) -> int | None:
+    """Convert Firestore timestamps to browser-friendly milliseconds."""
+    try:
+        return int(value.timestamp() * 1000)
+    except Exception:
+        return None
+
+
+async def _load_session_messages(uid: str, session_id: str, limit_count: int) -> list[dict]:
+    """Load one chat session via Admin SDK so UI history matches agent memory."""
+    db = get_firestore_client()
+    if db is None:
+        return []
+
+    def _read() -> list[dict]:
+        docs = list(
+            db.collection("users")
+            .document(uid)
+            .collection("chat_sessions")
+            .document(session_id)
+            .collection("messages")
+            .order_by("timestamp", direction=firestore.Query.DESCENDING)
+            .limit(limit_count)
+            .stream()
+        )
+        docs.reverse()
+        messages = []
+        for doc in docs:
+            data = doc.to_dict() or {}
+            role = data.get("role")
+            content = data.get("content")
+            if role in {"user", "assistant"} and content:
+                messages.append(
+                    {
+                        "id": doc.id,
+                        "role": role,
+                        "content": content,
+                        "timestamp": _timestamp_ms(data.get("timestamp")),
+                    }
+                )
+        return messages
+
+    try:
+        return await asyncio.to_thread(_read)
+    except Exception as exc:
+        logger.warning("Could not load chat session %s: %s", session_id, exc)
+        return []
+
+
 def _save_chat_messages_task(uid: str, session_id: str, user_message: str, assistant_message: str, tools_called: list[str]) -> None:
     """Persist chat messages in the customer-visible messages collection."""
     if not uid or not session_id:
@@ -114,6 +163,20 @@ def _save_chat_messages_task(uid: str, session_id: str, user_message: str, assis
 
     task = asyncio.create_task(asyncio.to_thread(_save))
     task.add_done_callback(_log_failure)
+
+
+@router.get("/chat/history")
+@limiter.limit("30/minute")
+async def chat_history_endpoint(
+    request: Request,
+    uid: str = Query(..., min_length=1),
+    session_id: str = Query(..., min_length=1),
+    limit_count: int = Query(50, ge=1, le=100, alias="limit"),
+) -> dict:
+    """Return messages for one user-owned chat session."""
+    await _verify_and_check(request, uid)
+    messages = await _load_session_messages(uid, session_id, limit_count)
+    return {"session_id": session_id, "messages": messages}
 
 
 @router.post("/chat")

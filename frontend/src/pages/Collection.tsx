@@ -4,8 +4,8 @@ import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { useFirebase } from "@/contexts/FirebaseContext";
-import { subscribeToPurchases } from "@/services/db";
-import { allProducts } from "@/data/products";
+import { subscribeToProducts, subscribeToPurchases } from "@/services/db";
+import { allProducts, Product } from "@/data/products";
 import { SkeletonCard } from "@/components/SkeletonCard";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
@@ -24,8 +24,14 @@ const Collection = () => {
   const { user } = useFirebase();
   const [activeFilter, setActiveFilter] = useState<"all" | "ebook" | "pendrive">("all");
   const [purchases, setPurchases] = useState<PurchaseItem[]>([]);
+  const [liveProducts, setLiveProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   usePageTitle("My Collection");
+
+  useEffect(() => {
+    const unsubscribe = subscribeToProducts((products) => setLiveProducts(products));
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -39,7 +45,7 @@ const Collection = () => {
     const unsubscribe = subscribeToPurchases(user.uid, (items) => {
       // Enrich items with product details
       const enrichedItems = items.map((item: any) => {
-        const product = allProducts.find(p => p.id === item.productId);
+        const product = liveProducts.find(p => p.id === item.productId) || allProducts.find(p => p.id === item.productId);
         return {
           ...item,
           title: item.title || product?.title || item.productId,
@@ -53,7 +59,7 @@ const Collection = () => {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, liveProducts]);
 
   const filteredPurchases = useMemo(
     () =>

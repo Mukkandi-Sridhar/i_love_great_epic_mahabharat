@@ -366,7 +366,7 @@ const Payment = () => {
     });
   };
 
-  if (loadingProduct || (finalPrice === 0 && !appliedCoupon)) {
+  if (loadingProduct) {
     return (
       <div className="min-h-screen bg-[#050505] text-white pb-20">
         <header className="px-5 h-16 flex items-center justify-between border-b border-white/5 bg-black/40 sticky top-0 z-50 backdrop-blur-md">

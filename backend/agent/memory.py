@@ -154,7 +154,14 @@ async def get_user_context(uid: str) -> dict:
         return orders
 
     def _purchases() -> list[dict]:
-        docs = db.collection("users").document(uid).collection("purchases").stream()
+        docs = (
+            db.collection("users")
+            .document(uid)
+            .collection("purchases")
+            .order_by("createdAt", direction=firestore.Query.DESCENDING)
+            .limit(20)
+            .stream()
+        )
         purchases = []
         for doc in docs:
             data = doc.to_dict() or {}
