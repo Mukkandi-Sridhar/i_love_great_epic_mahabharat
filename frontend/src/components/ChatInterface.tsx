@@ -73,11 +73,9 @@ export const ChatInterface = () => {
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [sessionId, setSessionId] = useState(() => window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const [showQuickQuestions, setShowQuickQuestions] = useState(true);
     const [agentStatus, setAgentStatus] = useState<string | null>(null);
     const [activeTools, setActiveTools] = useState<string[]>([]);
     const [isListening, setIsListening] = useState(false);
-    const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -149,11 +147,6 @@ export const ChatInterface = () => {
         scrollToBottom();
     }, [messages, agentStatus, activeTools]);
 
-    useEffect(() => {
-        const onResize = () => setIsMobile(window.innerWidth < 768);
-        window.addEventListener("resize", onResize);
-        return () => window.removeEventListener("resize", onResize);
-    }, []);
 
     useEffect(() => {
         return () => {
@@ -174,7 +167,6 @@ export const ChatInterface = () => {
                     timestamp: Date.now(),
                 },
             ]);
-            setShowQuickQuestions(true);
             return;
         }
 
@@ -195,7 +187,6 @@ export const ChatInterface = () => {
 
                 if (persisted.length > 0) {
                     setMessages(persisted);
-                    setShowQuickQuestions(false);
                 } else {
                     const firstName = (user.displayName || user.email?.split("@")[0] || "").split(" ")[0];
                     setMessages([
@@ -206,7 +197,6 @@ export const ChatInterface = () => {
                             timestamp: Date.now(),
                         },
                     ]);
-                    setShowQuickQuestions(true);
                 }
             } catch {
                 if (!cancelled) {
@@ -214,7 +204,6 @@ export const ChatInterface = () => {
                     localStorage.setItem(storageKey, freshSession);
                     setSessionId(freshSession);
                     setMessages([greetingMessage(user.displayName || user.email?.split("@")[0])]);
-                    setShowQuickQuestions(true);
                 }
             }
         };
@@ -235,7 +224,6 @@ export const ChatInterface = () => {
         }
         setSessionId(freshSession);
         setMessages([greetingMessage(userName)]);
-        setShowQuickQuestions(true);
         setInput("");
         setAgentStatus(null);
         setActiveTools([]);
@@ -307,7 +295,6 @@ export const ChatInterface = () => {
         if (!trimmed || isLoading) return;
 
         stopListening();
-        setShowQuickQuestions(false);
 
         const userMessage: ChatMessage = {
             id: `${Date.now()}-user`,
@@ -454,13 +441,7 @@ export const ChatInterface = () => {
         await sendMessage(input);
     };
 
-    const quickQuestions = [
-        { label: "📦 Track my order", query: "Where is my order?" },
-        { label: "📖 Which product for me?", query: "Which product suits me best?" },
-        { label: "🔁 Refund & return policy", query: "What is your refund policy?" },
-        { label: "🎧 What's in the pendrive?", query: "What audio content is on the pendrive?" },
-    ];
-    const visibleQuestions = isMobile ? quickQuestions.slice(0, 2) : quickQuestions;
+
 
     return (
         <div className="flex flex-col w-full h-full md:max-h-[700px] max-w-3xl mx-auto bg-black/60 backdrop-blur-2xl md:rounded-2xl border-y md:border border-white/10 overflow-hidden shadow-2xl relative">
@@ -586,25 +567,7 @@ export const ChatInterface = () => {
                     })}
                 </AnimatePresence>
 
-                {showQuickQuestions && messages.length === 1 && (
-                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="ml-12 flex flex-col gap-2">
-                        {visibleQuestions.map((q) => (
-                            <motion.button
-                                key={q.label}
-                                whileHover={{ scale: 1.01 }}
-                                whileTap={{ scale: 0.98 }}
-                                type="button"
-                                onClick={() => sendMessage(q.query)}
-                                disabled={isLoading}
-                                className="flex items-center gap-3 px-4 py-3 rounded-2xl text-left border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] hover:border-primary/25 transition-all disabled:opacity-40 group"
-                            >
-                                <span className="text-[13px] text-gray-300 group-hover:text-white transition-colors">
-                                    {q.label}
-                                </span>
-                            </motion.button>
-                        ))}
-                    </motion.div>
-                )}
+
 
                 {isLoading && (
                     <motion.div

@@ -264,9 +264,13 @@ const Payment = () => {
         return;
       }
 
-      const order = await createRazorpayOrder({ uid: user.uid, amount: finalPrice });
+      const order = await createRazorpayOrder({
+        uid: user.uid,
+        productId: product.id,
+        couponCode: appliedCoupon?.code,
+      });
       const razorpayKey = order.key || import.meta.env.VITE_RAZORPAY_KEY_ID;
-      if (!order.success || !order.orderId || !razorpayKey) {
+      if (!order.success || !order.orderId || !razorpayKey || order.amount === undefined) {
         if (paymentBypassEnabled) {
           toast({
             title: "Using test payment",
@@ -280,9 +284,14 @@ const Payment = () => {
         return;
       }
 
+      // The Razorpay order is immutable once created, so `order.amount` (computed
+      // server-side from the product's real price) is what will actually be
+      // charged — sync the UI to it rather than the locally-estimated finalPrice.
+      setFinalPrice(order.amount);
+
       const checkout = new window.Razorpay({
         key: razorpayKey,
-        amount: Math.round(finalPrice * 100),
+        amount: Math.round(order.amount * 100),
         currency: order.currency || "INR",
         name: "I Love Great Epic Mahabharat",
         description: product.title,
@@ -307,7 +316,7 @@ const Payment = () => {
               razorpay_signature: response.razorpay_signature,
               gateway: "razorpay",
               status: "captured",
-              amount: finalPrice,
+              amount: order.amount,
               currency: "INR",
               paid_at: new Date().toISOString(),
             },

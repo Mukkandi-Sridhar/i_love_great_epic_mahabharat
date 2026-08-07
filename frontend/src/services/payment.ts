@@ -39,14 +39,19 @@ export interface RazorpayOrderResult {
   error?: string;
 }
 
-export const createRazorpayOrder = async (options: { uid: string; amount: number }): Promise<RazorpayOrderResult> => {
+export const createRazorpayOrder = async (options: {
+  uid: string;
+  productId: string;
+  couponCode?: string;
+}): Promise<RazorpayOrderResult> => {
   try {
     const res = await fetch(`${BACKEND_URL}/create-razorpay-order`, {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify({
         uid: options.uid,
-        amount: options.amount,
+        product_id: options.productId,
+        coupon_code: options.couponCode || null,
       }),
     });
 

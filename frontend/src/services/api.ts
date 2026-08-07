@@ -1,6 +1,6 @@
 import { auth } from "@/lib/firebase";
 
-export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://ilgem-backend-y0m3.onrender.com";
 
 export const jsonHeaders = () => ({
   "Content-Type": "application/json",
