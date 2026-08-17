@@ -107,6 +107,10 @@ async def _run_streaming_loop(
     tools: list[dict],
     client: Any,
     session_id: str,
+    *,
+    uid: str,
+    email: str,
+    name: str,
 ):
     """
     Single streaming loop: streams tokens live when no tools needed,
@@ -192,7 +196,10 @@ async def _run_streaming_loop(
                 }
 
             results = await asyncio.gather(
-                *[process_tool_call(tc["name"], tc["arguments"]) for tc in tc_list]
+                *[
+                    process_tool_call(tc["name"], tc["arguments"], uid=uid, email=email, user_name=name)
+                    for tc in tc_list
+                ]
             )
 
             for tc, result in zip(tc_list, results):
@@ -220,14 +227,13 @@ async def _create_escalation_ticket(
 ) -> str | None:
     """Create a support ticket for exhausted tool loops and return its id."""
     args = {
-        "uid": uid,
-        "email": email,
-        "name": name,
         "issue": issue[:500] or "Agent tool loop exhausted before a final response.",
         "category": "other",
     }
     tools_called.append("create_support_ticket")
-    result = await process_tool_call("create_support_ticket", json.dumps(args))
+    result = await process_tool_call(
+        "create_support_ticket", json.dumps(args), uid=uid, email=email, user_name=name
+    )
     try:
         parsed = json.loads(result)
     except json.JSONDecodeError:
@@ -270,7 +276,9 @@ async def run_agent(
     )
 
     try:
-        async for event in _run_streaming_loop(messages, _get_tool_schema(), client, session_id):
+        async for event in _run_streaming_loop(
+            messages, _get_tool_schema(), client, session_id, uid=uid, email=email, name=name
+        ):
             event_type = event.get("type")
             if event_type == "token":
                 response_parts.append(event.get("delta", ""))
@@ -336,7 +344,9 @@ async def run_agent_streaming(
 
     completed = False
     try:
-        async for event in _run_streaming_loop(messages, _get_tool_schema(), client, session_id):
+        async for event in _run_streaming_loop(
+            messages, _get_tool_schema(), client, session_id, uid=uid, email=email, name=name
+        ):
             if event.get("type") == "tool_end" and event.get("tool"):
                 tools_called.append(event["tool"])
             if event.get("type") == "done":

@@ -59,8 +59,8 @@ async def razorpay_webhook(
 
     db = get_firestore_client()
     if db is None:
-        logger.warning("Firestore unavailable; Razorpay webhook accepted without processing.")
-        return {"status": "accepted"}
+        logger.warning("Firestore unavailable; rejecting Razorpay webhook so it is retried.")
+        return JSONResponse(status_code=503, content={"detail": "Database unavailable"})
 
     try:
         event_name = event.get("event")

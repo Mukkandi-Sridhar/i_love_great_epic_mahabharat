@@ -66,18 +66,6 @@ def append_fallback_turns(uid: str, session_id: str, turns: list[dict[str, Any]]
     _fallback_sessions[key] = existing
 
 
-async def _save_turn(uid: str, session_id: str, role: str, content: str) -> None:
-    """Deprecated: messages collection is the source of truth. Do not call."""
-    import warnings
-
-    warnings.warn(
-        "_save_turn is deprecated; use _save_chat_messages_task in chat.py",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    append_fallback_turns(uid, session_id, [{"role": role, "content": content}])
-
-
 async def get_history(uid: str, session_id: str, limit: int = 10) -> list[dict]:
     """Load the most recent conversation turns in chronological order."""
     if not uid or not session_id:

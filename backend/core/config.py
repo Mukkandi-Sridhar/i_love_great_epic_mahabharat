@@ -57,8 +57,6 @@ class Settings:
             "http://localhost:8080,http://127.0.0.1:8080"
         ),
     )
-    # Deprecated: admin routes now use Firebase JWT + /admins/{uid}.
-    admin_secret: str = _env("ADMIN_SECRET")
     chunk_size: int = _int_env("CHUNK_SIZE", 500)
     chunk_overlap: int = _int_env("CHUNK_OVERLAP", 100)
     top_k: int = _int_env("TOP_K", 4)

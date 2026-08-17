@@ -57,9 +57,10 @@ def _latest_message(body: ChatRequestBody) -> str:
     return ""
 
 
-async def _verify_and_check(request: Request, uid: str) -> None:
-    await verify_request_uid(request, uid, required=True)
+async def _verify_and_check(request: Request, uid: str) -> dict | None:
+    decoded = await verify_request_uid(request, uid, required=True)
     await check_user_not_blocked(uid)
+    return decoded
 
 
 def _timestamp_ms(value) -> int | None:
@@ -192,15 +193,16 @@ async def chat_endpoint(request: Request, body: ChatRequestBody = Body(...)) -> 
 
     try:
         check_uid_rate_limit(body.uid)
-        _, history = await asyncio.gather(
+        decoded, history = await asyncio.gather(
             _verify_and_check(request, body.uid),
             get_history(body.uid, session_id, limit=settings.history_limit),
         )
+        email = (decoded or {}).get("email") or body.email
         agent_result = await run_agent(
             message=message,
             uid=body.uid,
-            email=body.email,
-            name=body.name or (body.email.split("@")[0] if body.email else "there"),
+            email=email,
+            name=body.name or (email.split("@")[0] if email else "there"),
             session_id=session_id,
             history=history,
         )
@@ -251,16 +253,17 @@ async def chat_stream_endpoint(request: Request, body: ChatRequestBody = Body(..
         tools_called: list[str] = []
         try:
             check_uid_rate_limit(body.uid)
-            _, history = await asyncio.gather(
+            decoded, history = await asyncio.gather(
                 _verify_and_check(request, body.uid),
                 get_history(body.uid, session_id, limit=settings.history_limit),
             )
+            email = (decoded or {}).get("email") or body.email
 
             async for event in run_agent_streaming(
                 message=message,
                 uid=body.uid,
-                email=body.email,
-                name=body.name or (body.email.split("@")[0] if body.email else "there"),
+                email=email,
+                name=body.name or (email.split("@")[0] if email else "there"),
                 session_id=session_id,
                 history=history,
             ):

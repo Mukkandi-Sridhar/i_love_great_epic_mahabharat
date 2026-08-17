@@ -73,32 +73,21 @@ def list_tools() -> list[dict]:
         {
             "name": "get_user_summary",
             "description": "Quick account snapshot: order count, owned products, open tickets. Call first on account questions.",
-            "parameters": {
-                "type": "object",
-                "properties": {"uid": {"type": "string"}},
-                "required": ["uid"],
-            },
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
         {
             "name": "get_order_status",
             "description": "Fetch live orders. Call on: order/delivery/tracking/shipping questions. Omit order_id to get recent orders.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "uid": {"type": "string"},
-                    "order_id": {"type": "string"},
-                },
-                "required": ["uid"],
+                "properties": {"order_id": {"type": "string"}},
+                "required": [],
             },
         },
         {
             "name": "get_user_purchases",
             "description": "Fetch all purchased products and access status. Call on: collection/owned/access/download questions.",
-            "parameters": {
-                "type": "object",
-                "properties": {"uid": {"type": "string"}},
-                "required": ["uid"],
-            },
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
         {
             "name": "verify_payment",
@@ -118,13 +107,11 @@ def list_tools() -> list[dict]:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "uid": {"type": "string"},
-                    "email": {"type": "string"},
                     "order_id": {"type": "string"},
                     "reason": {"type": "string"},
                     "product_type": {"type": "string"},
                 },
-                "required": ["uid", "email", "order_id", "reason", "product_type"],
+                "required": ["order_id", "reason", "product_type"],
             },
         },
         {
@@ -133,16 +120,13 @@ def list_tools() -> list[dict]:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "uid": {"type": "string"},
-                    "email": {"type": "string"},
-                    "name": {"type": "string"},
                     "issue": {"type": "string"},
                     "category": {
                         "type": "string",
                         "enum": ["payment", "access", "shipping", "refund", "technical", "other"],
                     },
                 },
-                "required": ["uid", "email", "name", "issue", "category"],
+                "required": ["issue", "category"],
             },
         },
         {
@@ -341,13 +325,17 @@ async def _get_user_purchases(uid: str) -> dict:
         return {"purchases": [], "total_count": 0}
 
 
-async def _verify_payment(payment_ref: str) -> dict:
-    """Verify a payment by its stored ID.
+async def _verify_payment(uid: str, payment_ref: str) -> dict:
+    """Verify a payment by its stored ID, scoped to the requesting user.
 
     Accepts either a Firestore transaction_id or a Razorpay payment ID - both
-    are stored as the document key in the transactions_index collection.
+    are stored as the document key in the caller's own transactions subcollection,
+    so this can never resolve another user's payment.
     """
+    uid = _clean_uid(uid)
     payment_ref = (payment_ref or "").strip()
+    if not uid:
+        return {"error": "User identifier is required."}
     if not payment_ref:
         return {"error": "Please share a transaction ID or Razorpay payment ID."}
 
@@ -356,7 +344,7 @@ async def _verify_payment(payment_ref: str) -> dict:
         return {"error": "Could not verify payment right now."}
 
     def _read() -> dict:
-        transaction = db.collection("transactions_index").document(payment_ref).get()
+        transaction = db.collection("users").document(uid).collection("transactions").document(payment_ref).get()
         if not transaction.exists:
             return {"error": "Transaction not found. Please check your transaction ID."}
 
@@ -623,24 +611,36 @@ async def _search_products(query: str) -> dict:
     return {"products": products}
 
 
-async def process_tool_call(name: str, arguments: str | dict | None) -> str:
-    """Execute an MCP tool and return its JSON string result."""
+async def process_tool_call(
+    name: str,
+    arguments: str | dict | None,
+    *,
+    uid: str = "",
+    email: str = "",
+    user_name: str = "",
+) -> str:
+    """Execute an MCP tool and return its JSON string result.
+
+    `uid`/`email`/`user_name` come from the authenticated request, never from the
+    model's tool-call arguments — the LLM only ever supplies task-specific fields
+    (order_id, reason, issue, ...), so it cannot access or act on another account.
+    """
     args = _parse_args(arguments)
     logger.info("MCP tool call: %s", name)
     try:
         if name == "get_user_summary":
-            return _json(await _get_user_summary(args.get("uid", "")))
+            return _json(await _get_user_summary(uid))
         if name == "get_order_status":
-            return _json(await _get_order_status(args.get("uid", ""), args.get("order_id")))
+            return _json(await _get_order_status(uid, args.get("order_id")))
         if name == "get_user_purchases":
-            return _json(await _get_user_purchases(args.get("uid", "")))
+            return _json(await _get_user_purchases(uid))
         if name == "verify_payment":
-            return _json(await _verify_payment(args.get("transaction_id") or args.get("razorpay_payment_id", "")))
+            return _json(await _verify_payment(uid, args.get("transaction_id") or args.get("razorpay_payment_id", "")))
         if name == "create_refund_request":
             return _json(
                 await _create_refund_request(
-                    args.get("uid", ""),
-                    args.get("email", ""),
+                    uid,
+                    email,
                     args.get("order_id", ""),
                     args.get("reason", ""),
                     args.get("product_type", ""),
@@ -649,9 +649,9 @@ async def process_tool_call(name: str, arguments: str | dict | None) -> str:
         if name == "create_support_ticket":
             return _json(
                 await _create_support_ticket(
-                    args.get("uid", ""),
-                    args.get("email", ""),
-                    args.get("name", ""),
+                    uid,
+                    email,
+                    user_name,
                     args.get("issue", ""),
                     args.get("category", "other"),
                 )

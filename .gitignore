@@ -15,3 +15,6 @@ frontend/*.txt
 # Generated local RAG storage
 storage/
 logs/
+
+# Old export folder that has held leaked credentials in the past — never allow it back.
+Music/

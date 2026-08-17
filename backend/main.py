@@ -137,6 +137,38 @@ def _db():
     return db
 
 
+def _get_active_product(db, product_id: str) -> dict:
+    """Fetch a product's authoritative price/type/title from Firestore.
+
+    Prices are never trusted from the client — every endpoint that charges
+    money looks the price up here instead of accepting it in the request body.
+    """
+    doc = db.collection("products").document((product_id or "").strip()).get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Product not found")
+    data = doc.to_dict() or {}
+    if data.get("enabled", True) is False:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return data
+
+
+def _coupon_discount_from_snapshot(data: dict, price: float) -> float:
+    """Compute a coupon's discount for a price from a Firestore coupon snapshot."""
+    if not data.get("enabled", True):
+        return 0
+    expires_at = data.get("expiresAt")
+    if expires_at and expires_at.timestamp() < time.time():
+        return 0
+    max_uses = data.get("maxUses")
+    used_count = data.get("usedCount", 0)
+    if max_uses and used_count >= max_uses:
+        return 0
+    coupon_type = data.get("type", "fixed")
+    coupon_value = float(data.get("value", 0))
+    discount = (price * coupon_value / 100) if coupon_type == "percent" else coupon_value
+    return max(0.0, min(float(price), discount))
+
+
 class CompleteOrderRequest(BaseModel):
     uid: str
     email: str
@@ -162,7 +194,8 @@ class CompleteOrderRequest(BaseModel):
 
 class CreateRazorpayOrderRequest(BaseModel):
     uid: str
-    amount: float
+    product_id: str
+    coupon_code: Optional[str] = None
 
 
 class ValidateCouponRequest(BaseModel):
@@ -193,27 +226,63 @@ def _verify_razorpay_signature(
 @app.post("/create-razorpay-order")
 @limiter.limit("20/minute")
 async def create_razorpay_order(request: Request, body: CreateRazorpayOrderRequest):
-    """Create a Razorpay order server-side."""
+    """Create a Razorpay order for the product's authoritative Firestore price.
+
+    The client never supplies the amount — Razorpay orders are immutable once
+    created, so pricing correctly here is what makes the signature check in
+    /complete-order actually mean something.
+    """
     await verify_request_uid(request, body.uid, required=True)
     if not settings.razorpay_key_id or not settings.razorpay_key_secret:
         raise HTTPException(status_code=503, detail="Payment gateway is not configured")
-    if body.amount <= 0:
-        raise HTTPException(status_code=400, detail="Invalid amount")
 
     def _create() -> dict:
         import razorpay
 
+        db = _db()
+        product = _get_active_product(db, body.product_id)
+        base_price = float(product.get("price", 0) or 0)
+        if base_price <= 0:
+            raise HTTPException(status_code=400, detail="Invalid product price")
+
+        coupon_code = (body.coupon_code or "").strip().upper() or None
+        discount = 0.0
+        if coupon_code:
+            coupon_snap = db.collection("coupons").document(coupon_code).get()
+            if coupon_snap.exists:
+                discount = _coupon_discount_from_snapshot(coupon_snap.to_dict() or {}, base_price)
+
+        final_amount = max(0.0, base_price - discount)
+        if final_amount <= 0:
+            raise HTTPException(status_code=400, detail="Invalid amount")
+
         client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
         order = client.order.create(
             {
-                "amount": int(round(body.amount * 100)),
+                "amount": int(round(final_amount * 100)),
                 "currency": "INR",
                 "receipt": f"order_{body.uid[:8]}_{int(time.time())}",
+                "notes": {"uid": body.uid, "product_id": body.product_id},
+            }
+        )
+
+        db.collection("payment_intents").document(order["id"]).set(
+            {
+                "uid": body.uid,
+                "productId": body.product_id,
+                "productType": product.get("type", ""),
+                "productTitle": product.get("title", ""),
+                "basePrice": base_price,
+                "couponCode": coupon_code,
+                "discount": discount,
+                "amount": final_amount,
+                "used": False,
+                "createdAt": firestore.SERVER_TIMESTAMP,
             }
         )
         return {
             "order_id": order["id"],
-            "amount": body.amount,
+            "amount": final_amount,
             "currency": "INR",
             "key": settings.razorpay_key_id,
         }
@@ -235,19 +304,65 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
 
     def _write_order() -> dict:
         db = _db()
-        base_price = body.base_price
-        final_amount = base_price
-        discount_value = 0
-        product_type = body.product_type.lower()
-        product_title = body.product_title or f"{product_type.title()} - {body.product_id}"
         transaction_details = body.transaction_details or {}
         razorpay_order_id = body.razorpay_order_id or transaction_details.get("razorpay_order_id")
         razorpay_payment_id = body.razorpay_payment_id or transaction_details.get("razorpay_payment_id")
         razorpay_signature = body.razorpay_signature or transaction_details.get("razorpay_signature")
 
         allow_test_payment = body.test_payment and (settings.is_dev or settings.allow_payment_bypass)
+
+        intent = None
+        intent_ref = None
         if not allow_test_payment:
             _verify_razorpay_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
+            if not razorpay_order_id:
+                raise HTTPException(status_code=403, detail="Missing payment order reference")
+            intent_ref = db.collection("payment_intents").document(razorpay_order_id)
+            intent_snap = intent_ref.get()
+            if not intent_snap.exists:
+                raise HTTPException(status_code=403, detail="Unknown payment order")
+            intent = intent_snap.to_dict() or {}
+            if intent.get("uid") != body.uid:
+                raise HTTPException(status_code=403, detail="Payment order does not belong to this account")
+            if intent.get("used"):
+                raise HTTPException(status_code=409, detail="Payment order already processed")
+
+        # Pricing and product identity always come from a server-trusted source:
+        # the payment_intent recorded at order-creation time for real payments,
+        # or a fresh Firestore product lookup for gated dev/test-bypass payments.
+        # The client-supplied product_id/product_type/base_price/coupon_code in
+        # `body` are never used to compute money or grant access.
+        if intent is not None:
+            product_id = intent.get("productId") or ""
+            product_type = (intent.get("productType") or "").lower()
+            product_title = intent.get("productTitle") or f"{product_type.title()} - {product_id}"
+            base_price = float(intent.get("basePrice", 0))
+            discount_value = float(intent.get("discount", 0))
+            final_amount = float(intent.get("amount", max(0.0, base_price - discount_value)))
+            coupon_code = intent.get("couponCode")
+        else:
+            product_id = (body.product_id or "").strip()
+            product = _get_active_product(db, product_id)
+            product_type = (product.get("type") or body.product_type or "").lower()
+            product_title = body.product_title or product.get("title") or f"{product_type.title()} - {product_id}"
+            base_price = float(product.get("price", 0) or 0)
+            coupon_code = (body.coupon_code or "").strip().upper() or None
+            discount_value = 0.0
+            if coupon_code:
+                coupon_ref = db.collection("coupons").document(coupon_code)
+
+                @firestore.transactional
+                def _apply_coupon(transaction, ref, price):
+                    snap = ref.get(transaction=transaction)
+                    if not snap.exists:
+                        return 0.0
+                    discount = _coupon_discount_from_snapshot(snap.to_dict() or {}, price)
+                    if discount > 0:
+                        transaction.update(ref, {"usedCount": firestore.Increment(1)})
+                    return discount
+
+                discount_value = _apply_coupon(db.transaction(), coupon_ref, base_price)
+            final_amount = max(0.0, base_price - discount_value)
 
         transaction_id = (
             transaction_details.get("transaction_id")
@@ -285,52 +400,25 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         product_ref = None
         product_snap = None
         if product_type in {"pendrive", "sdcard"}:
-            product_ref = db.collection("products").document(body.product_id)
+            product_ref = db.collection("products").document(product_id)
             product_snap = product_ref.get()
             if product_snap.exists:
                 stock = (product_snap.to_dict() or {}).get("stockCount", 999)
                 if stock <= 0:
                     raise HTTPException(status_code=400, detail="Product is out of stock")
 
-        if body.coupon_code:
-            coupon_ref = db.collection("coupons").document(body.coupon_code.upper())
-
-            @firestore.transactional
-            def _apply_coupon(transaction, ref, price):
-                snap = ref.get(transaction=transaction)
-                if not snap.exists:
-                    return 0
-                data = snap.to_dict() or {}
-                if not data.get("enabled", True):
-                    return 0
-                expires_at = data.get("expiresAt")
-                if expires_at and expires_at.timestamp() < time.time():
-                    return 0
-                max_uses = data.get("maxUses")
-                used_count = data.get("usedCount", 0)
-                if max_uses and used_count >= max_uses:
-                    return 0
-                coupon_type = data.get("type", "fixed")
-                coupon_value = float(data.get("value", 0))
-                discount = (price * coupon_value / 100) if coupon_type == "percent" else coupon_value
-                transaction.update(ref, {"usedCount": firestore.Increment(1)})
-                return discount
-
-            discount_value = _apply_coupon(db.transaction(), coupon_ref, base_price)
-            final_amount = max(0, base_price - discount_value)
-
         order_data = {
             "uid": body.uid,
             "userName": body.name or "",
             "email": body.email,
             "phone": body.phone,
-            "productId": body.product_id,
+            "productId": product_id,
             "productTitle": product_title,
             "productType": product_type,
             "basePrice": base_price,
             "discount": discount_value,
             "amount": final_amount,
-            "couponCode": body.coupon_code.upper() if body.coupon_code else None,
+            "couponCode": coupon_code,
             "status": "paid",
             "paymentMode": body.payment_mode or "direct",
             "paymentRef": body.payment_ref,
@@ -346,8 +434,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         order_data["orderId"] = order_doc_id
 
         purchase_data = {
-            "productId": body.product_id,
-            "product_id": body.product_id,
+            "productId": product_id,
+            "product_id": product_id,
             "type": product_type,
             "productType": product_type,
             "title": product_title,
@@ -376,7 +464,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             "email": body.email,
             "phone": body.phone,
             "orderId": order_doc_id,
-            "productId": body.product_id,
+            "productId": product_id,
             "productTitle": product_title,
             "amount": final_amount,
             "currency": transaction_details.get("currency", "INR"),
@@ -390,12 +478,14 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         batch = db.batch()
         batch.set(user_order_ref, order_data)
         batch.set(db.collection("orders_index").document(order_doc_id), order_data)
-        batch.set(db.collection("users").document(body.uid).collection("purchases").document(body.product_id), purchase_data)
+        batch.set(db.collection("users").document(body.uid).collection("purchases").document(product_id), purchase_data)
         if transaction_id:
             batch.set(db.collection("users").document(body.uid).collection("transactions").document(transaction_id), transaction_data)
             batch.set(transaction_index_ref, transaction_data)
         if product_ref is not None and product_snap is not None and product_snap.exists:
             batch.update(product_ref, {"stockCount": firestore.Increment(-1)})
+        if intent_ref is not None:
+            batch.set(intent_ref, {"used": True, "usedAt": firestore.SERVER_TIMESTAMP}, merge=True)
         batch.commit()
         return {
             "status": "success",
