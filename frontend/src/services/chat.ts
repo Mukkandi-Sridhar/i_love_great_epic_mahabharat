@@ -89,12 +89,14 @@ export const chatService = {
 
   async sendMessageStreaming(
     payload: ChatRequestPayload,
-    onEvent: (event: StreamEvent) => void
+    onEvent: (event: StreamEvent) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     const response = await fetch(`${BACKEND_URL}/chat/stream`, {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify(payload),
+      signal,
     });
 
     if (!response.ok || !response.body) {
@@ -110,25 +112,38 @@ export const chatService = {
     const decoder = new TextDecoder();
     let buffer = "";
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    // Cancelling the reader unblocks a pending read() so an aborted stream
+    // stops emitting events instead of running to completion in the background.
+    const onAbort = () => reader.cancel().catch(() => undefined);
+    signal?.addEventListener("abort", onAbort, { once: true });
 
-      buffer += decoder.decode(value, { stream: true });
-      const events = buffer.split("\n\n");
-      buffer = events.pop() || "";
+    try {
+      while (true) {
+        if (signal?.aborted) return;
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const eventText of events) {
-        const line = eventText.split("\n").find((item) => item.startsWith("data: "));
-        if (!line) continue;
-        try {
-          const parsed = JSON.parse(line.slice(6));
-          onEvent(parsed);
-        } catch {
-          // Malformed SSE frame; wait for the next valid event.
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const eventText of events) {
+          if (signal?.aborted) return;
+          const line = eventText.split("\n").find((item) => item.startsWith("data: "));
+          if (!line) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            onEvent(parsed);
+          } catch {
+            // Malformed SSE frame; wait for the next valid event.
+          }
         }
       }
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
+
+    if (signal?.aborted) return;
 
     if (buffer.startsWith("data: ")) {
       try {

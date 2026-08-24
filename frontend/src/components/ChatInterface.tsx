@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Mic, MessageSquarePlus } from "lucide-react";
+import { Send, Mic, MessageSquarePlus, Square } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import { chatService, ChatMessage } from "@/services/chat";
@@ -84,6 +84,7 @@ export const ChatInterface = () => {
     const tokenBufferRef = useRef<string>("");
     const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const abortRef = useRef<AbortController | null>(null);
 
     const scrollToBottom = () => {
         const container = containerRef.current;
@@ -148,10 +149,21 @@ export const ChatInterface = () => {
     }, [messages, agentStatus, activeTools]);
 
 
+    const stopGenerating = () => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        stopFlushTimer();
+        setIsLoading(false);
+        setAgentStatus(null);
+        setActiveTools([]);
+    };
+
     useEffect(() => {
         return () => {
             stopListening();
             stopFlushTimer(false);
+            // Abort any in-flight stream so its callbacks stop firing after unmount.
+            abortRef.current?.abort();
         };
     }, []);
 
@@ -324,6 +336,10 @@ export const ChatInterface = () => {
         setActiveTools([]);
         setIsLoading(true);
 
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         let handledError = false;
         let streamingAssistantStarted = false;
         let streamedContent = "";
@@ -416,23 +432,31 @@ export const ChatInterface = () => {
                             ]);
                             break;
                     }
-                }
-            );
-        } catch {
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: `err-${Date.now()}`,
-                    role: "assistant",
-                    content: "Sorry, I'm having trouble connecting. Please try again.",
-                    timestamp: Date.now(),
                 },
-            ]);
+                controller.signal
+            );
+        } catch (error) {
+            // A user-initiated stop (or unmount) is not a failure — leave the
+            // partial reply in place instead of appending an error bubble.
+            if (!controller.signal.aborted) {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `err-${Date.now()}`,
+                        role: "assistant",
+                        content: "Sorry, I'm having trouble connecting. Please try again.",
+                        timestamp: Date.now(),
+                    },
+                ]);
+            }
         } finally {
-            setIsLoading(false);
-            setAgentStatus(null);
-            setActiveTools([]);
-            stopFlushTimer();
+            if (abortRef.current === controller) abortRef.current = null;
+            if (!controller.signal.aborted) {
+                setIsLoading(false);
+                setAgentStatus(null);
+                setActiveTools([]);
+                stopFlushTimer();
+            }
         }
     };
 
@@ -646,14 +670,26 @@ export const ChatInterface = () => {
                         disabled={isLoading}
                     />
 
-                    <button
-                        type="submit"
-                        disabled={isLoading || !input.trim()}
-                        aria-label="Send message"
-                        className="p-2 rounded-lg transition-all text-gray-500 hover:text-white disabled:opacity-20 flex items-center justify-center hover:bg-white/5"
-                    >
-                        <Send className="w-5 h-5" />
-                    </button>
+                    {isLoading ? (
+                        <button
+                            type="button"
+                            onClick={stopGenerating}
+                            aria-label="Stop generating"
+                            title="Stop generating"
+                            className="p-2 rounded-lg transition-all text-primary hover:text-white hover:bg-white/5 flex items-center justify-center"
+                        >
+                            <Square className="w-4 h-4 fill-current" />
+                        </button>
+                    ) : (
+                        <button
+                            type="submit"
+                            disabled={!input.trim()}
+                            aria-label="Send message"
+                            className="p-2 rounded-lg transition-all text-gray-500 hover:text-white disabled:opacity-20 flex items-center justify-center hover:bg-white/5"
+                        >
+                            <Send className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
             </form>
         </div>

@@ -28,9 +28,15 @@ service cloud.firestore {
         allow read, write: if isAdmin(); 
       }
 
-      // Notifications: user can read; only backend writes
+      // Notifications: user can read their own and flip read/unread only.
+      // Content stays backend-owned — the update rule rejects any change that
+      // touches a field other than `read`, so a user cannot rewrite the title
+      // or message of a notification they were sent.
       match /notifications/{notifId} {
         allow read: if request.auth != null && request.auth.uid == uid;
+        allow update: if request.auth != null
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
         allow read, write: if isAdmin();
       }
     }

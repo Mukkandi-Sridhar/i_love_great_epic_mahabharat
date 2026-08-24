@@ -36,7 +36,7 @@ const Rate = () => {
   return (
     <div className="min-h-screen bg-background pb-6">
       <header className="sticky top-0 z-40 bg-card/95 backdrop-blur border-b border-border">
-        <div className="flex items-center gap-3 px-4 h-14">
+        <div className="flex items-center gap-3 px-4 md:px-6 h-14 max-w-xl mx-auto w-full">
           <button 
             onClick={() => navigate(-1)}
             className="p-2 hover:bg-muted rounded-lg transition-colors"
@@ -47,7 +47,7 @@ const Rate = () => {
         </div>
       </header>
       
-      <main className="px-4 pt-6 animate-fade-in max-w-md mx-auto">
+      <main className="px-4 md:px-6 pt-6 md:pt-8 animate-fade-in max-w-xl mx-auto w-full">
         <div className="bg-card border border-border rounded-xl p-6 shadow-elegant">
           <h2 className="font-serif font-bold text-xl text-center mb-2">
             How was your experience?

@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebase";
-import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, where, arrayUnion } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, where, arrayUnion } from "firebase/firestore";
 import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { log } from "./logger";
 
@@ -181,13 +181,55 @@ export const subscribeToPurchases = (userId: string, callback: (items: any[]) =>
 
 
 
-export interface NotificationItem { id?: string; title: string; message: string; createdAt: any; read?: boolean }
+export interface NotificationItem { id?: string; title: string; message: string; createdAt: any; read?: boolean; type?: string }
+
+// Notifications accumulate indefinitely (every order, shipment, ticket reply
+// and admin broadcast adds one), so every read is capped rather than pulling
+// the user's whole history on each visit.
+const NOTIFICATION_PAGE_SIZE = 50;
 
 export const fetchNotifications = async (userId: string) => {
-  // New Path: users/{userId}/notifications
-  const q = query(collection(db, "users", userId, "notifications"), orderBy("createdAt", "desc"));
+  const q = query(
+    collection(db, "users", userId, "notifications"),
+    orderBy("createdAt", "desc"),
+    limit(NOTIFICATION_PAGE_SIZE)
+  );
   const snap = await getDocs(q);
   const items: NotificationItem[] = [];
   snap.forEach((d) => items.push({ id: d.id, ...(d.data() as any) }));
   return items;
+};
+
+export const subscribeToNotifications = (
+  userId: string,
+  callback: (items: NotificationItem[]) => void,
+  onError?: (err: unknown) => void
+) => {
+  const q = query(
+    collection(db, "users", userId, "notifications"),
+    orderBy("createdAt", "desc"),
+    limit(NOTIFICATION_PAGE_SIZE)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: NotificationItem[] = [];
+      snap.forEach((d) => items.push({ id: d.id, ...(d.data() as any) }));
+      callback(items);
+    },
+    (err) => {
+      log.error("Error subscribing to notifications", err);
+      onError?.(err);
+    }
+  );
+};
+
+export const markNotificationRead = async (userId: string, notificationId: string) => {
+  await setDoc(doc(db, "users", userId, "notifications", notificationId), { read: true }, { merge: true });
+};
+
+export const markAllNotificationsRead = async (userId: string, notifications: NotificationItem[]) => {
+  const unread = notifications.filter((item) => item.id && !item.read);
+  if (unread.length === 0) return;
+  await Promise.all(unread.map((item) => markNotificationRead(userId, item.id!)));
 };

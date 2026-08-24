@@ -37,9 +37,10 @@ const Profile = () => {
     <div className="min-h-screen bg-background pb-6">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-card/95 backdrop-blur border-b border-border">
-        <div className="flex items-center gap-3 px-4 h-14">
+        <div className="flex items-center gap-3 px-4 md:px-6 h-14 max-w-2xl mx-auto w-full">
           <button
             onClick={() => navigate(-1)}
+            aria-label="Go back"
             className="p-2 hover:bg-muted rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -48,7 +49,7 @@ const Profile = () => {
         </div>
       </header>
 
-      <main className="px-4 pt-6 animate-fade-in">
+      <main className="px-4 md:px-6 pt-6 md:pt-8 animate-fade-in max-w-2xl mx-auto w-full">
         {/* User Info Card */}
         <div className="bg-card border border-border rounded-xl p-6 mb-6 text-center shadow-elegant">
           <div className="w-20 h-20 bg-muted rounded-full mx-auto mb-4 flex items-center justify-center overflow-hidden">
