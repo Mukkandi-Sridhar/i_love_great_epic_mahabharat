@@ -532,6 +532,54 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             "createdAt": firestore.SERVER_TIMESTAMP,
         }
 
+        is_digital = product_type == "ebook"
+        if is_free_intent:
+            notification = {
+                "title": "Access Granted",
+                "message": (
+                    f"{product_title} is now in your library — open it any time."
+                    if is_digital
+                    else f"{product_title} is confirmed. We'll share dispatch details shortly."
+                ),
+                "type": "access",
+            }
+        else:
+            notification = {
+                "title": "Payment Successful",
+                "message": (
+                    f"Access has been granted for {product_title}."
+                    if is_digital
+                    else f"Your order for {product_title} is confirmed."
+                ),
+                "type": "order",
+            }
+
+        # Free grants never reach the Razorpay webhook, which is what notifies
+        # paying customers — without this a free order completes silently.
+        notification_ref = db.collection("users").document(body.uid).collection("notifications").document()
+
+        # Every completed order is recorded here regardless of amount, so a
+        # ₹0 grant is as auditable as a paid one.
+        audit_ref = db.collection("audit_logs").document()
+        audit_entry = {
+            "action": "order_completed",
+            "uid": body.uid,
+            "email": body.email,
+            "orderId": order_doc_id,
+            "productId": product_id,
+            "productType": product_type,
+            "basePrice": base_price,
+            "discount": discount_value,
+            "amount": final_amount,
+            "couponCode": coupon_code,
+            "free": is_free_intent,
+            "testPayment": body.test_payment,
+            "paymentMode": order_data["paymentMode"],
+            "transactionId": transaction_id,
+            "razorpayOrderId": razorpay_order_id,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+        }
+
         batch = db.batch()
         batch.set(user_order_ref, order_data)
         batch.set(db.collection("orders_index").document(order_doc_id), order_data)
@@ -543,7 +591,14 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             batch.update(product_ref, {"stockCount": firestore.Increment(-1)})
         if intent_ref is not None:
             batch.set(intent_ref, {"used": True, "usedAt": firestore.SERVER_TIMESTAMP}, merge=True)
+        batch.set(notification_ref, {**notification, "read": False, "createdAt": firestore.SERVER_TIMESTAMP})
+        batch.set(audit_ref, audit_entry)
         batch.commit()
+
+        logger.info(
+            "Order completed: uid=%s order=%s product=%s amount=%s free=%s",
+            body.uid, order_doc_id, product_id, final_amount, is_free_intent,
+        )
         return {
             "status": "success",
             "order_id": order_doc_id,

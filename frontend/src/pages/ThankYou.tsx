@@ -13,6 +13,7 @@ const ThankYou = () => {
   usePageTitle("Thank You");
   const state = (location.state || {}) as {
     mode?: "prepaid" | "physical-paid";
+    free?: boolean;
     orderId?: string;
     transactionId?: string;
     phone?: string;
@@ -47,7 +48,9 @@ const ThankYou = () => {
 
         <h1 className="text-3xl font-serif font-bold mb-3">Thank You!</h1>
 
-        <p className="text-muted-foreground mb-2">Your purchase was successful</p>
+        <p className="text-muted-foreground mb-2">
+          {state.free ? "Your book has been unlocked" : "Your purchase was successful"}
+        </p>
 
         <div className="bg-card border border-primary/20 rounded-xl p-4 mb-6 text-left shadow-elegant space-y-3">
           {state.orderId && (
@@ -62,7 +65,7 @@ const ThankYou = () => {
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <CreditCard className="w-4 h-4 text-primary" />
               <span>
-                <span className="font-semibold text-foreground">Transaction ID:</span> {state.transactionId}
+                <span className="font-semibold text-foreground">{state.free ? "Reference" : "Transaction ID"}:</span> {state.transactionId}
               </span>
             </div>
           )}
@@ -76,7 +79,9 @@ const ThankYou = () => {
               <p>We will ship within 24-48 hours.</p>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Check your email for download link.</p>
+            <p className="text-sm text-muted-foreground">
+              {state.free ? "It is in your collection now — open it any time." : "Check your email for download link."}
+            </p>
           )}
         </div>
 

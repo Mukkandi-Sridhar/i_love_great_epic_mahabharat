@@ -19,6 +19,7 @@ import { completeOrder, createRazorpayOrder } from "@/services/payment";
 import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { BACKEND_URL } from "@/services/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { cn } from "@/lib/utils";
 
 // Sitewide free-access promo: silently tried on every checkout so every
 // product is free for now. Reversible by disabling/deleting this coupon in
@@ -128,6 +129,12 @@ const Payment = () => {
 
   const isFormIncomplete = missingFields.length > 0;
 
+  // While the sitewide promo covers the full price there is nothing to pay, so
+  // the checkout drops its payment chrome entirely: no gateway, no card
+  // messaging, no promo field. Orders, transactions, purchases, notifications
+  // and the audit entry are still written exactly as for a paid order.
+  const isFree = finalPrice <= 0 && basePrice > 0;
+
   const applyCoupon = async (code: string, { silent = false }: { silent?: boolean } = {}) => {
     if (!code) return false;
     if (!silent) setValidatingCoupon(true);
@@ -233,6 +240,7 @@ const Payment = () => {
           mode: isPhysical ? "physical-paid" : "prepaid",
           orderId: result.orderId,
           transactionId: result.transactionId || payment.ref,
+          free: payment.mode === "free",
           phone,
         },
       });
@@ -540,7 +548,7 @@ const Payment = () => {
             </div>
           )}
 
-          <div className="space-y-4 pt-4 border-t border-white/5">
+          <div className={cn("space-y-4 pt-4 border-t border-white/5", isFree && "hidden")}>
             <div className="flex items-center gap-2 mb-2">
               <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-black text-primary">{isPhysical ? 3 : 2}</div>
               <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Promo Code</h3>
@@ -623,21 +631,23 @@ const Payment = () => {
                   )}
                 </div>
               </div>
-              <div className="text-right hidden sm:block lg:hidden">
-                <div className="flex items-center gap-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                  <Lock className="w-3 h-3 text-emerald-500" /> Secure Encryption
+              {!isFree && (
+                <div className="text-right hidden sm:block lg:hidden">
+                  <div className="flex items-center gap-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                    <Lock className="w-3 h-3 text-emerald-500" /> Secure Encryption
+                  </div>
+                  <p className="text-[8px] text-gray-600">256-bit SSL Protected</p>
                 </div>
-                <p className="text-[8px] text-gray-600">256-bit SSL Protected</p>
-              </div>
+              )}
             </div>
 
-            <div title={isFormIncomplete ? `Missing: ${missingFields.join(", ")}` : "Ready to pay"}>
+            <div title={isFormIncomplete ? `Missing: ${missingFields.join(", ")}` : isFree ? "Ready to claim" : "Ready to pay"}>
               <Button
                 onClick={handlePayment}
                 disabled={loading || isFormIncomplete}
                 className="w-full h-16 lg:h-14 rounded-[1.5rem] bg-primary text-black text-base font-black uppercase tracking-widest shadow-[0_15px_30px_-10px_rgba(212,175,55,0.4)] hover:scale-[1.01] active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? "Processing..." : finalPrice <= 0 && basePrice > 0 ? "Get It Free" : "Pay Now"}
+                {loading ? "Processing..." : isFree ? "Get It Free" : "Pay Now"}
               </Button>
               {isFormIncomplete && (
                 <p className="mt-3 text-center text-[11px] text-gray-500">
@@ -646,7 +656,7 @@ const Payment = () => {
               )}
             </div>
 
-            {paymentBypassEnabled && (
+            {paymentBypassEnabled && !isFree && (
               <div className="space-y-3">
                 <Button
                   type="button"
@@ -664,15 +674,21 @@ const Payment = () => {
             )}
 
             <div className="hidden lg:flex items-center justify-center gap-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest">
-              <Lock className="w-3 h-3 text-emerald-500" /> 256-bit SSL Protected
+              {isFree ? (
+                <><BadgeCheck className="w-3 h-3 text-emerald-500" /> No payment needed</>
+              ) : (
+                <><Lock className="w-3 h-3 text-emerald-500" /> 256-bit SSL Protected</>
+              )}
             </div>
 
-            <div className="flex justify-center gap-6 pt-4 grayscale opacity-30">
-              <BadgeCheck className="w-5 h-5" />
-              <ShieldCheck className="w-5 h-5" />
-              <Lock className="w-5 h-5" />
-              <Zap className="w-5 h-5" />
-            </div>
+            {!isFree && (
+              <div className="flex justify-center gap-6 pt-4 grayscale opacity-30">
+                <BadgeCheck className="w-5 h-5" />
+                <ShieldCheck className="w-5 h-5" />
+                <Lock className="w-5 h-5" />
+                <Zap className="w-5 h-5" />
+              </div>
+            )}
           </div>
         </aside>
       </div>
