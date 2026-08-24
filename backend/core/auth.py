@@ -56,7 +56,7 @@ async def verify_firebase_token(token: str) -> dict:
         cache_key = ""
 
     try:
-        decoded = await asyncio.to_thread(auth.verify_id_token, token)
+        decoded = await asyncio.to_thread(auth.verify_id_token, token, check_revoked=True)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 

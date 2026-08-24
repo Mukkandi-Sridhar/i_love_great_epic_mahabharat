@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebase";
-import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, where, addDoc, arrayUnion } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, where, arrayUnion } from "firebase/firestore";
 import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { log } from "./logger";
 
@@ -19,24 +19,6 @@ export interface PurchaseAccess {
   downloadLink?: string | null;
   driveLink?: string | null;
   createdAt?: any;
-}
-
-export interface OrderInput {
-  userId: string;
-  phone: string;
-  items: Array<{ id: string; type: ProductType; price: number; title: string }>;
-  total: number;
-  status: "pending" | "paid" | "cod" | "shipped" | "delivered";
-  paymentRef?: string | null;
-  shipping?: {
-    name?: string;
-    address?: string;
-    city?: string;
-    pincode?: string;
-    state?: string;
-    altPhone?: string;
-    instagramId?: string;
-  };
 }
 
 const fallbackById = new Map(FALLBACK_PRODUCTS.map((product) => [product.id, product]));
@@ -125,35 +107,6 @@ export const getUserProfile = async (userId: string) => {
 };
 
 
-
-export const createOrder = async (data: OrderInput) => {
-  log.info("createOrder", data);
-  // New Path: users/{userId}/orders
-  const ref = await addDoc(collection(db, "users", data.userId, "orders"), {
-    ...data,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
-};
-
-export const addPurchase = async (
-  userId: string,
-  productId: string,
-  type: ProductType,
-  options?: { title?: string; price?: number; imageUrl?: string }
-) => {
-  log.info("addPurchase", { userId, productId, type, options });
-  const purchasesCol = collection(db, "users", userId, "purchases");
-  // Use productId as document id so each user has at most one purchase doc per product
-  await setDoc(doc(purchasesCol, productId), {
-    productId,
-    type,
-    title: options?.title ?? null,
-    price: options?.price ?? null,
-    imageUrl: options?.imageUrl ?? null,
-    createdAt: serverTimestamp(),
-  });
-};
 
 export const fetchOwnedProductIds = async (userId: string) => {
   log.info("fetchOwnedProductIds", { userId });

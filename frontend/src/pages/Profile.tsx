@@ -15,13 +15,8 @@ const Profile = () => {
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([
-      getDoc(doc(db, "admins", user.uid)),
-      getDoc(doc(db, "users", user.uid)),
-    ])
-      .then(([adminSnap, userSnap]) => {
-        setIsAdmin(adminSnap.exists() || (userSnap.exists() && userSnap.data()?.isAdmin === true));
-      })
+    getDoc(doc(db, "admins", user.uid))
+      .then((adminSnap) => setIsAdmin(adminSnap.exists()))
       .catch(() => setIsAdmin(false));
   }, [user]);
 

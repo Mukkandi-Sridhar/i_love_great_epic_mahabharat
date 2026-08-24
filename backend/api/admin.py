@@ -9,7 +9,7 @@ from firebase_admin import auth as firebase_auth
 from firebase_admin import firestore
 from pydantic import BaseModel, field_validator
 
-from backend.core.auth import require_admin
+from backend.core.auth import invalidate_blocked_cache, require_admin
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
 from backend.core.rate_limit import limiter
@@ -292,6 +292,7 @@ async def admin_block_user(
         )
         if body.blocked:
             firebase_auth.revoke_refresh_tokens(uid)
+        invalidate_blocked_cache(uid)
         return {"status": "success"}
 
     try:

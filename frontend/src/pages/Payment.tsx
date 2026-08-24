@@ -183,8 +183,8 @@ const Payment = () => {
       setLoading(true);
       const result = await completeOrder({
         uid: user.uid,
-        email: user.email || email,
-        name: user.displayName || name,
+        email: email || user.email || "",
+        name: name || user.displayName || "",
         phone,
         productType: product.type,
         productId: id || "",
