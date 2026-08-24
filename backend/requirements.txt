@@ -12,3 +12,6 @@ httpx>=0.28.0
 cachetools>=5.3.0
 python-multipart==0.0.20
 orjson>=3.10.0
+
+# Test-only. Harmless in the deploy image; run with: pytest backend/tests
+pytest>=8.0.0

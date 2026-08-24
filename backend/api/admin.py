@@ -251,7 +251,9 @@ async def admin_send_notification(
         sent = 0
         batch = database.batch()
         batch_count = 0
-        for user_doc in database.collection("users").stream():
+        # select([]) returns document IDs without their fields — a broadcast only
+        # needs the ids, and pulling every full user profile is billed per read.
+        for user_doc in database.collection("users").select([]).stream():
             ref = database.collection("users").document(user_doc.id).collection("notifications").document()
             batch.set(ref, notif_data)
             batch_count += 1

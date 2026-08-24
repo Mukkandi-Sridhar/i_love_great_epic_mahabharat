@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -35,16 +35,21 @@ def _bool_env(name: str, default: bool = False) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    """Typed settings used by backend modules."""
+    """Typed settings used by backend modules.
 
-    openai_api_key: str = _env("OPENAI_API_KEY")
+    Credential fields are declared with ``repr=False`` so they cannot be
+    printed by an accidental ``print(settings)``, a dataclass repr inside a
+    traceback, or a logged exception frame. Read them explicitly by name.
+    """
+
+    openai_api_key: str = field(default=_env("OPENAI_API_KEY"), repr=False)
     openai_chat_model: str = _env("OPENAI_CHAT_MODEL", _env("OPENAI_MODEL", "gpt-4o-mini"))
     openai_embedding_model: str = _env("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     firebase_service_account_path: str = _env("FIREBASE_SERVICE_ACCOUNT_PATH", "serviceAccountKey.json")
-    firebase_credentials: str = _env("FIREBASE_CREDENTIALS")
+    firebase_credentials: str = field(default=_env("FIREBASE_CREDENTIALS"), repr=False)
     razorpay_key_id: str = _env("RAZORPAY_KEY_ID")
-    razorpay_key_secret: str = _env("RAZORPAY_KEY_SECRET")
-    razorpay_webhook_secret: str = _env("RAZORPAY_WEBHOOK_SECRET")
+    razorpay_key_secret: str = field(default=_env("RAZORPAY_KEY_SECRET"), repr=False)
+    razorpay_webhook_secret: str = field(default=_env("RAZORPAY_WEBHOOK_SECRET"), repr=False)
     app_env: str = _env("APP_ENV", _env("ENVIRONMENT", "production")).lower()
     allow_payment_bypass: bool = _bool_env("ALLOW_PAYMENT_BYPASS", False)
     chroma_dir: str = _env("CHROMA_DIR", "./storage/chroma")
