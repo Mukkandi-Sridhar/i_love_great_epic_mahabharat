@@ -13,5 +13,9 @@ cachetools>=5.3.0
 python-multipart==0.0.20
 orjson>=3.10.0
 
+# Supabase backend (active when DATA_BACKEND=supabase).
+supabase>=2.10.0
+pyjwt>=2.8.0
+
 # Test-only. Harmless in the deploy image; run with: pytest backend/tests
 pytest>=8.0.0

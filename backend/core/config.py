@@ -50,6 +50,15 @@ class Settings:
     razorpay_key_id: str = _env("RAZORPAY_KEY_ID")
     razorpay_key_secret: str = field(default=_env("RAZORPAY_KEY_SECRET"), repr=False)
     razorpay_webhook_secret: str = field(default=_env("RAZORPAY_WEBHOOK_SECRET"), repr=False)
+
+    # Supabase. The service-role key bypasses RLS and must never reach a client;
+    # it is what lets the backend remain the only writer of money and access.
+    supabase_url: str = _env("SUPABASE_URL")
+    supabase_service_role_key: str = field(default=_env("SUPABASE_SERVICE_ROLE_KEY"), repr=False)
+    supabase_jwt_secret: str = field(default=_env("SUPABASE_JWT_SECRET"), repr=False)
+    # Selects the data backend during the migration: "firebase" (default) or
+    # "supabase". Lets the new layer ship dark and be switched per environment.
+    data_backend: str = _env("DATA_BACKEND", "firebase").lower()
     app_env: str = _env("APP_ENV", _env("ENVIRONMENT", "production")).lower()
     allow_payment_bypass: bool = _bool_env("ALLOW_PAYMENT_BYPASS", False)
     chroma_dir: str = _env("CHROMA_DIR", "./storage/chroma")
@@ -76,6 +85,16 @@ class Settings:
     def cors_origin_list(self) -> list[str]:
         """Return configured CORS origins as a cleaned list."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def use_supabase(self) -> bool:
+        """Return whether Supabase is the active data backend."""
+        return self.data_backend == "supabase"
+
+    @property
+    def supabase_configured(self) -> bool:
+        """Return whether Supabase has the credentials it needs to serve traffic."""
+        return bool(self.supabase_url and self.supabase_service_role_key and self.supabase_jwt_secret)
 
     @property
     def is_dev(self) -> bool:
