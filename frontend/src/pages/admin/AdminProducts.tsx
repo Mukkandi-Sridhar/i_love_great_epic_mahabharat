@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Save, RefreshCw } from "lucide-react";
+import { Package, Save, RefreshCw, Sparkles, Loader2 } from "lucide-react";
 import { SkeletonCard } from "@/components/SkeletonCard";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { refreshProductIndex } from "@/services/api";
 
 interface Product {
     id: string;
@@ -22,6 +23,7 @@ interface Product {
 const AdminProducts = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const [reindexing, setReindexing] = useState(false);
     const { toast } = useToast();
     usePageTitle("Admin Products");
 
@@ -46,11 +48,33 @@ const AdminProducts = () => {
                 ...updates,
                 updatedAt: serverTimestamp()
             });
-            toast({ title: "Success", description: "Product updated" });
             loadProducts();
+
+            // Keep the assistant's product search in step with the catalog.
+            // The save already succeeded, so a failure here is a warning.
+            const reindexed = await refreshProductIndex();
+            toast(
+                reindexed
+                    ? { title: "Success", description: "Product updated and AI search reindexed." }
+                    : {
+                        title: "Product updated",
+                        description: "Saved, but the AI search index did not refresh. Retry from the header.",
+                    }
+            );
         } catch (error) {
             toast({ title: "Error", description: "Update failed", variant: "destructive" });
         }
+    };
+
+    const handleManualReindex = async () => {
+        setReindexing(true);
+        const ok = await refreshProductIndex();
+        setReindexing(false);
+        toast(
+            ok
+                ? { title: "AI search reindexed", description: "The assistant now sees the current catalog." }
+                : { title: "Reindex failed", description: "Could not refresh the AI index.", variant: "destructive" }
+        );
     };
 
     return (
@@ -59,9 +83,22 @@ const AdminProducts = () => {
                 <h1 className="text-2xl font-bold flex items-center gap-2">
                     <Package className="w-6 h-6" /> Product Management
                 </h1>
-                <Button onClick={loadProducts} variant="outline" size="sm" className="gap-2">
-                    <RefreshCw className="w-4 h-4" /> Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button
+                        onClick={handleManualReindex}
+                        variant="outline"
+                        size="sm"
+                        disabled={reindexing}
+                        className="gap-2"
+                        title="Rebuild the assistant's product search index from the catalog"
+                    >
+                        {reindexing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        <span className="hidden sm:inline">{reindexing ? "Reindexing..." : "Reindex AI"}</span>
+                    </Button>
+                    <Button onClick={loadProducts} variant="outline" size="sm" className="gap-2">
+                        <RefreshCw className="w-4 h-4" /> Refresh
+                    </Button>
+                </div>
             </div>
 
             <div className="grid gap-4">
@@ -91,7 +128,10 @@ const AdminProducts = () => {
                                         />
                                     </div>
 
-                                    {p.isPhysical && (
+                                    {/* Match the backend, which enforces stock by product type.
+                                        Keying this off isPhysical alone hid the field for any
+                                        physical product saved without that flag. */}
+                                    {(p.isPhysical || p.type === "pendrive" || p.type === "sdcard") && (
                                         <div className="w-24">
                                             <p className="text-[10px] uppercase font-bold text-orange-400 mb-1">In Stock</p>
                                             <Input

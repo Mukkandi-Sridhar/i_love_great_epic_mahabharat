@@ -664,6 +664,24 @@ def _product_summary(product_id: str, data: dict, promo: dict | None = None) -> 
     return summary
 
 
+def _fetch_products_by_id(product_ids: list[str]) -> dict[str, dict]:
+    """Batch-read catalog docs by id in a single Firestore round trip."""
+    ids = [pid for pid in dict.fromkeys(product_ids) if pid]
+    if not ids:
+        return {}
+
+    db = get_firestore_client()
+    if db is None:
+        return {}
+
+    try:
+        refs = [db.collection("products").document(pid) for pid in ids]
+        return {doc.id: (doc.to_dict() or {}) for doc in db.get_all(refs) if doc.exists}
+    except Exception as exc:
+        logger.warning("Batch product fetch failed: %s", exc)
+        return {}
+
+
 async def _list_catalog_products(limit_count: int = 20) -> list[dict]:
     """Fetch a compact product list directly from Firestore for broad catalog questions."""
     db = get_firestore_client()
@@ -704,24 +722,41 @@ async def _search_products(query: str) -> dict:
     if not results:
         return {"products": await _list_catalog_products(limit_count=6)}
 
-    promo = await asyncio.to_thread(_active_sitewide_promo)
+    # Vector metadata is a snapshot from ingest time, so an admin price or
+    # stock edit would otherwise be quoted stale until the next re-ingest.
+    # Only the semantic *ranking* comes from the index; the facts are re-read.
+    product_ids = [r.get("product_id", "") for r in results if r.get("product_id")]
+    live, promo = await asyncio.gather(
+        asyncio.to_thread(_fetch_products_by_id, product_ids),
+        asyncio.to_thread(_active_sitewide_promo),
+    )
+
     products = []
     for result in results:
-        base_price = float(result.get("price", 0) or 0)
-        product = {
-            "product_id": result.get("product_id", ""),
-            "title": result.get("title", ""),
-            "type": result.get("type", ""),
-            "price": base_price,
-            "language": result.get("language", ""),
-            "summary": result.get("text", "")[:300],
-        }
-        effective = _effective_price(base_price, promo)
-        if effective < base_price:
-            product["current_price"] = effective
-            product["promo_note"] = (
-                "Free for a limited time" if effective <= 0 else "Discounted by the current promotion"
-            )
+        product_id = result.get("product_id", "")
+        current = live.get(product_id)
+        if current is not None and current.get("enabled", True) is False:
+            continue  # Disabled since ingest — do not recommend it.
+        if current:
+            product = _product_summary(product_id, current, promo)
+            product["summary"] = str(current.get("description") or result.get("text", ""))[:300]
+        else:
+            # Indexed but no longer in Firestore: fall back to indexed fields.
+            base_price = float(result.get("price", 0) or 0)
+            product = {
+                "product_id": product_id,
+                "title": result.get("title", ""),
+                "type": result.get("type", ""),
+                "price": base_price,
+                "language": result.get("language", ""),
+                "summary": result.get("text", "")[:300],
+            }
+            effective = _effective_price(base_price, promo)
+            if effective < base_price:
+                product["current_price"] = effective
+                product["promo_note"] = (
+                    "Free for a limited time" if effective <= 0 else "Discounted by the current promotion"
+                )
         products.append(product)
     return {"products": products}
 

@@ -372,6 +372,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         # or a fresh Firestore product lookup for gated dev/test-bypass payments.
         # The client-supplied product_id/product_type/base_price/coupon_code in
         # `body` are never used to compute money or grant access.
+        product = None
         if intent is not None:
             product_id = intent.get("productId") or ""
             product_type = (intent.get("productType") or "").lower()
@@ -448,6 +449,21 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
                 if stock <= 0:
                     raise HTTPException(status_code=400, detail="Product is out of stock")
 
+        # The readable file is whatever the catalog says it is. Trusting the
+        # client's copy would let a stale or placeholder catalog persist a dead
+        # link onto a real purchase, leaving a paying customer with no book.
+        if product is None:
+            product_doc = db.collection("products").document(product_id).get()
+            product = (product_doc.to_dict() or {}) if product_doc.exists else {}
+        download_link = (
+            product.get("driveLink")
+            or product.get("downloadLink")
+            or body.download_link
+            or None
+        )
+        product_language = product.get("language") or body.product_language
+        product_image = product.get("image") or product.get("imageUrl") or body.product_image
+
         order_data = {
             "uid": body.uid,
             "userName": body.name or "",
@@ -480,8 +496,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             "type": product_type,
             "productType": product_type,
             "title": product_title,
-            "language": body.product_language,
-            "imageUrl": body.product_image,
+            "language": product_language,
+            "imageUrl": product_image,
             "price": final_amount,
             "orderId": order_doc_id,
             "status": "active",
@@ -491,9 +507,9 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             "paymentRef": body.payment_ref,
             "transactionId": transaction_id,
             "testPayment": body.test_payment,
-            "downloadLink": body.download_link,
-            "driveLink": body.download_link,
-            "hasDownloadLink": bool(body.download_link),
+            "downloadLink": download_link,
+            "driveLink": download_link,
+            "hasDownloadLink": bool(download_link),
             "createdAt": firestore.SERVER_TIMESTAMP,
             "updatedAt": firestore.SERVER_TIMESTAMP,
         }
