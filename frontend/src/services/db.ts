@@ -57,11 +57,27 @@ const normalizeProduct = (id: string, data: Record<string, any>): Product => {
   } as Product;
 };
 
+/**
+ * Product types withdrawn from sale.
+ *
+ * This hides them from browse/search only. Anyone who already bought one keeps
+ * their purchase, their library entry and their download — the collection and
+ * reader read from `purchases`, not from this catalog, so retired stock stays
+ * accessible to its owners. Backend order and refund handling is likewise
+ * untouched, so an in-flight order still completes.
+ */
+export const RETIRED_PRODUCT_TYPES: ReadonlySet<string> = new Set(["sdcard"]);
+
+export const isSellable = (product: { type?: string | null }) =>
+  !RETIRED_PRODUCT_TYPES.has((product.type || "").toLowerCase());
+
 export const fetchProducts = async (): Promise<Product[]> => {
   log.info("fetchProducts");
   try {
     const snap = await getDocs(collection(db, "products"));
-    return snap.docs.map((d) => normalizeProduct(d.id, d.data() as Record<string, any>));
+    return snap.docs
+      .map((d) => normalizeProduct(d.id, d.data() as Record<string, any>))
+      .filter(isSellable);
   } catch (err) {
     log.error("Error fetching products", err);
     return [];
@@ -74,7 +90,11 @@ export const subscribeToProducts = (callback: (products: Product[]) => void) => 
     return onSnapshot(
       collection(db, "products"),
       (snap) => {
-        callback(snap.docs.map((d) => normalizeProduct(d.id, d.data() as Record<string, any>)));
+        callback(
+          snap.docs
+            .map((d) => normalizeProduct(d.id, d.data() as Record<string, any>))
+            .filter(isSellable)
+        );
       },
       (err) => {
         log.error("Error subscribing to products", err);
