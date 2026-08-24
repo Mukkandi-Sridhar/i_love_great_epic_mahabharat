@@ -35,7 +35,8 @@ export interface RazorpayOrderResult {
   orderId?: string;
   amount?: number;
   currency?: string;
-  key?: string;
+  key?: string | null;
+  free?: boolean;
   error?: string;
 }
 
@@ -67,6 +68,7 @@ export const createRazorpayOrder = async (options: {
       amount: data.amount,
       currency: data.currency,
       key: data.key,
+      free: Boolean(data.free),
     };
   } catch (e: any) {
     return { success: false, error: e.message || "Network error" };

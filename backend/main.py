@@ -233,12 +233,8 @@ async def create_razorpay_order(request: Request, body: CreateRazorpayOrderReque
     /complete-order actually mean something.
     """
     await verify_request_uid(request, body.uid, required=True)
-    if not settings.razorpay_key_id or not settings.razorpay_key_secret:
-        raise HTTPException(status_code=503, detail="Payment gateway is not configured")
 
     def _create() -> dict:
-        import razorpay
-
         db = _db()
         product = _get_active_product(db, body.product_id)
         base_price = float(product.get("price", 0) or 0)
@@ -253,8 +249,42 @@ async def create_razorpay_order(request: Request, body: CreateRazorpayOrderReque
                 discount = _coupon_discount_from_snapshot(coupon_snap.to_dict() or {}, base_price)
 
         final_amount = max(0.0, base_price - discount)
+
+        # Razorpay can't create a ₹0 order (its minimum is ₹1), and there's
+        # nothing to sign a payment for when a coupon fully covers the price.
+        # Record a "free" intent instead — complete-order recognizes it and
+        # grants access without a Razorpay signature, since the ₹0 amount was
+        # computed here from the authoritative product price + coupon, not
+        # supplied by the client.
         if final_amount <= 0:
-            raise HTTPException(status_code=400, detail="Invalid amount")
+            intent_ref = db.collection("payment_intents").document()
+            intent_ref.set(
+                {
+                    "uid": body.uid,
+                    "productId": body.product_id,
+                    "productType": product.get("type", ""),
+                    "productTitle": product.get("title", ""),
+                    "basePrice": base_price,
+                    "couponCode": coupon_code,
+                    "discount": discount,
+                    "amount": 0.0,
+                    "free": True,
+                    "used": False,
+                    "createdAt": firestore.SERVER_TIMESTAMP,
+                }
+            )
+            return {
+                "order_id": intent_ref.id,
+                "amount": 0.0,
+                "currency": "INR",
+                "key": None,
+                "free": True,
+            }
+
+        if not settings.razorpay_key_id or not settings.razorpay_key_secret:
+            raise HTTPException(status_code=503, detail="Payment gateway is not configured")
+
+        import razorpay
 
         client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
         order = client.order.create(
@@ -276,6 +306,7 @@ async def create_razorpay_order(request: Request, body: CreateRazorpayOrderReque
                 "couponCode": coupon_code,
                 "discount": discount,
                 "amount": final_amount,
+                "free": False,
                 "used": False,
                 "createdAt": firestore.SERVER_TIMESTAMP,
             }
@@ -285,6 +316,7 @@ async def create_razorpay_order(request: Request, body: CreateRazorpayOrderReque
             "amount": final_amount,
             "currency": "INR",
             "key": settings.razorpay_key_id,
+            "free": False,
         }
 
     try:
@@ -313,15 +345,23 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
 
         intent = None
         intent_ref = None
-        if not allow_test_payment:
-            _verify_razorpay_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
-            if not razorpay_order_id:
-                raise HTTPException(status_code=403, detail="Missing payment order reference")
+        if razorpay_order_id:
             intent_ref = db.collection("payment_intents").document(razorpay_order_id)
             intent_snap = intent_ref.get()
-            if not intent_snap.exists:
+            if intent_snap.exists:
+                intent = intent_snap.to_dict() or {}
+
+        # A "free" intent was recorded by create-razorpay-order itself, with an
+        # amount computed server-side from the real product price and coupon —
+        # it never went through Razorpay, so there is no signature to check.
+        is_free_intent = bool(intent) and intent.get("free") is True and float(intent.get("amount", 0) or 0) <= 0
+
+        if not allow_test_payment and not is_free_intent:
+            _verify_razorpay_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
+            if intent is None:
                 raise HTTPException(status_code=403, detail="Unknown payment order")
-            intent = intent_snap.to_dict() or {}
+
+        if intent is not None:
             if intent.get("uid") != body.uid:
                 raise HTTPException(status_code=403, detail="Payment order does not belong to this account")
             if intent.get("used"):
@@ -371,7 +411,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             or body.payment_ref
         )
         if not transaction_id:
-            transaction_id = f"txn_test_{db.collection('transactions_index').document().id}"
+            prefix = "txn_free" if is_free_intent else "txn_test"
+            transaction_id = f"{prefix}_{db.collection('transactions_index').document().id}"
         transaction_index_ref = db.collection("transactions_index").document(transaction_id)
 
         @firestore.transactional
@@ -389,8 +430,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         transaction_details = {
             **transaction_details,
             "transaction_id": transaction_id,
-            "gateway": body.payment_mode or "test_checkout",
-            "status": "captured" if body.test_payment else "paid",
+            "gateway": "free" if is_free_intent else (body.payment_mode or "test_checkout"),
+            "status": "free" if is_free_intent else ("captured" if body.test_payment else "paid"),
             "currency": "INR",
             "razorpay_order_id": razorpay_order_id,
             "razorpay_payment_id": razorpay_payment_id,

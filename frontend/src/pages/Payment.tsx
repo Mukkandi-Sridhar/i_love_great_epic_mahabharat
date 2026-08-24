@@ -20,6 +20,12 @@ import { FALLBACK_PRODUCTS, Product } from "@/data/products";
 import { BACKEND_URL } from "@/services/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
+// Sitewide free-access promo: silently tried on every checkout so every
+// product is free for now. Reversible by disabling/deleting this coupon in
+// Firestore — no frontend redeploy needed, checkout just resumes normal
+// pricing since the backend coupon lookup fails closed to discount=0.
+const FREE_ACCESS_COUPON_CODE = "FREEACCESS";
+
 interface RazorpaySuccessResponse {
   razorpay_order_id: string;
   razorpay_payment_id: string;
@@ -122,31 +128,45 @@ const Payment = () => {
 
   const isFormIncomplete = missingFields.length > 0;
 
-  const validateCoupon = async () => {
-    if (!couponCode) return;
-    setValidatingCoupon(true);
+  const applyCoupon = async (code: string, { silent = false }: { silent?: boolean } = {}) => {
+    if (!code) return false;
+    if (!silent) setValidatingCoupon(true);
     try {
       const res = await fetch(`${BACKEND_URL}/validate-coupon`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode, amount: basePrice }),
+        body: JSON.stringify({ code, amount: basePrice }),
       });
       const data = await res.json();
       if (res.ok && data.valid) {
-        setAppliedCoupon({ code: couponCode, discount: data.discount, type: data.type });
+        setAppliedCoupon({ code, discount: data.discount, type: data.type });
         setFinalPrice(data.final_amount);
-        toast({ title: "Applied!", description: `Rs.${data.discount} discount applied.` });
-      } else {
+        if (!silent) toast({ title: "Applied!", description: `Rs.${data.discount} discount applied.` });
+        return true;
+      }
+      if (!silent) {
         toast({ title: "Invalid Code", variant: "destructive" });
         setAppliedCoupon(null);
         setFinalPrice(basePrice);
       }
+      return false;
     } catch {
-      toast({ title: "Error", description: "Server unreachable.", variant: "destructive" });
+      if (!silent) toast({ title: "Error", description: "Server unreachable.", variant: "destructive" });
+      return false;
     } finally {
-      setValidatingCoupon(false);
+      if (!silent) setValidatingCoupon(false);
     }
   };
+
+  const validateCoupon = () => applyCoupon(couponCode);
+
+  useEffect(() => {
+    if (!product || appliedCoupon) return;
+    applyCoupon(FREE_ACCESS_COUPON_CODE, { silent: true });
+    // Runs once per product load; a manually-entered coupon (setting
+    // appliedCoupon) takes priority and this effect backs off via the guard above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product]);
 
   const validateCheckout = () => {
     if (!user) {
@@ -249,6 +269,39 @@ const Payment = () => {
 
     setLoading(true);
     try {
+      const order = await createRazorpayOrder({
+        uid: user.uid,
+        productId: product.id,
+        couponCode: appliedCoupon?.code,
+      });
+      if (!order.success || !order.orderId || order.amount === undefined) {
+        toast({ title: "Payment unavailable", description: order.error || "Could not start payment.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
+      // The backend priced this order server-side. If a coupon (e.g. the
+      // sitewide free-access promo) fully covers it, it never touches
+      // Razorpay — complete it directly with the free intent's order id.
+      if (order.free || order.amount <= 0) {
+        setFinalPrice(0);
+        await submitCompletedOrder({
+          mode: "free",
+          ref: order.orderId,
+          test: false,
+          transactionDetails: {
+            transaction_id: order.orderId,
+            razorpay_order_id: order.orderId,
+            gateway: "free",
+            status: "free",
+            amount: 0,
+            currency: "INR",
+            paid_at: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
       const sdkReady = await loadRazorpaySdk();
       if (!sdkReady || !window.Razorpay) {
         if (paymentBypassEnabled) {
@@ -264,22 +317,17 @@ const Payment = () => {
         return;
       }
 
-      const order = await createRazorpayOrder({
-        uid: user.uid,
-        productId: product.id,
-        couponCode: appliedCoupon?.code,
-      });
       const razorpayKey = order.key || import.meta.env.VITE_RAZORPAY_KEY_ID;
-      if (!order.success || !order.orderId || !razorpayKey || order.amount === undefined) {
+      if (!razorpayKey) {
         if (paymentBypassEnabled) {
           toast({
             title: "Using test payment",
-            description: order.error || "Razorpay could not start, so a test transaction will be saved.",
+            description: "Razorpay key unavailable, so a test transaction will be saved.",
           });
           await handlePaymentBypass();
           return;
         }
-        toast({ title: "Payment unavailable", description: order.error || "Could not start payment.", variant: "destructive" });
+        toast({ title: "Payment unavailable", description: "Could not start payment.", variant: "destructive" });
         setLoading(false);
         return;
       }
@@ -417,8 +465,19 @@ const Payment = () => {
             <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">
               {product.type === "ebook" ? "Digital Access" : "Physical Artifact"}
             </p>
-            <p className="text-lg font-black text-primary mt-1">Rs.{finalPrice}</p>
-            {finalPrice > 999 && (
+            {finalPrice <= 0 && basePrice > 0 ? (
+              <p className="flex items-baseline gap-2 mt-1">
+                <span className="text-lg font-black text-emerald-400">FREE</span>
+                <span className="text-xs text-gray-500 line-through">Rs.{basePrice}</span>
+              </p>
+            ) : (
+              <p className="text-lg font-black text-primary mt-1">Rs.{finalPrice}</p>
+            )}
+            {finalPrice <= 0 && basePrice > 0 ? (
+              <span className="mt-2 inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                Free for a limited time
+              </span>
+            ) : finalPrice > 999 && (
               <span className="mt-2 inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-400">
                 Free Delivery
               </span>
