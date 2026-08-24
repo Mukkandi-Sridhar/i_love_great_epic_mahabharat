@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -158,6 +159,11 @@ def list_tools() -> list[dict]:
                 "properties": {"query": {"type": "string"}},
                 "required": ["query"],
             },
+        },
+        {
+            "name": "get_support_tickets",
+            "description": "Fetch the user's support tickets and refund requests with current status and any admin reply. Call on: 'what's my ticket status', 'did you reply', 'where is my refund', or any follow-up about a previously raised issue.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     ]
     return tools
@@ -488,6 +494,50 @@ async def _create_support_ticket(uid: str, email: str, name: str, issue: str, ca
         return {"error": "Could not create support ticket right now."}
 
 
+async def _get_support_tickets(uid: str) -> dict:
+    """Fetch the user's own tickets and refund requests with status and replies."""
+    uid = _clean_uid(uid)
+    if not uid:
+        return {"error": "User identifier is required."}
+
+    db = get_firestore_client()
+    if db is None:
+        return {"tickets": [], "total_count": 0}
+
+    def _read() -> dict:
+        docs = list(
+            db.collection("users")
+            .document(uid)
+            .collection("tickets")
+            .order_by("createdAt", direction=firestore.Query.DESCENDING)
+            .limit(10)
+            .stream()
+        )
+        tickets = []
+        for doc in docs:
+            data = doc.to_dict() or {}
+            tickets.append(
+                {
+                    "ticket_id": doc.id,
+                    "type": data.get("type", "support_request"),
+                    "category": data.get("category", ""),
+                    "issue": str(data.get("issue") or data.get("reason", ""))[:200],
+                    "order_id": data.get("order_id", ""),
+                    "status": data.get("status", ""),
+                    "admin_reply": str(data.get("adminReply", ""))[:400],
+                    "createdAt": _serialize_timestamp(data.get("createdAt")),
+                    "resolvedAt": _serialize_timestamp(data.get("resolvedAt")),
+                }
+            )
+        return {"tickets": tickets, "total_count": len(tickets)}
+
+    try:
+        return await asyncio.to_thread(_read)
+    except Exception as exc:
+        logger.warning("get_support_tickets failed: %s", exc)
+        return {"error": "Could not fetch your support tickets right now."}
+
+
 async def _check_coupon(code: str, amount: float) -> dict:
     """Validate a coupon and calculate discount."""
     db = get_firestore_client()
@@ -545,16 +595,73 @@ async def _search_policies(query: str) -> dict:
     return {"retrieved_chunks": lines, "sections_referenced": sections}
 
 
-def _product_summary(product_id: str, data: dict) -> dict:
+SITEWIDE_PROMO_CODE = "FREEACCESS"
+_promo_cache: tuple[float, dict | None] = (0.0, None)
+_PROMO_CACHE_TTL = 60
+
+
+def _active_sitewide_promo() -> dict | None:
+    """Return the active sitewide promo coupon, cached briefly.
+
+    Checkout auto-applies this coupon, so the model must quote the same
+    effective price the customer will actually be charged — otherwise it
+    advertises a price the cart contradicts.
+    """
+    global _promo_cache
+    cached_at, cached_value = _promo_cache
+    now = time.monotonic()
+    if now - cached_at < _PROMO_CACHE_TTL:
+        return cached_value
+
+    promo = None
+    db = get_firestore_client()
+    if db is not None:
+        try:
+            snap = db.collection("coupons").document(SITEWIDE_PROMO_CODE).get()
+            if snap.exists:
+                data = snap.to_dict() or {}
+                expires_at = data.get("expiresAt")
+                expired = bool(expires_at) and expires_at.timestamp() < time.time()
+                max_uses = data.get("maxUses")
+                exhausted = bool(max_uses) and data.get("usedCount", 0) >= max_uses
+                if data.get("enabled", True) and not expired and not exhausted:
+                    promo = data
+        except Exception as exc:
+            logger.warning("Could not read sitewide promo: %s", exc)
+
+    _promo_cache = (now, promo)
+    return promo
+
+
+def _effective_price(base_price: float, promo: dict | None) -> float:
+    """Apply the sitewide promo to a catalog price."""
+    if not promo:
+        return base_price
+    value = float(promo.get("value", 0) or 0)
+    discount = (base_price * value / 100) if promo.get("type") == "percent" else value
+    return max(0.0, base_price - max(0.0, min(base_price, discount)))
+
+
+def _product_summary(product_id: str, data: dict, promo: dict | None = None) -> dict:
     """Return compact catalog fields safe for the model."""
-    return {
+    product_type = data.get("type", "")
+    base_price = float(data.get("price", 0) or 0)
+    summary = {
         "product_id": product_id,
         "title": data.get("title", ""),
-        "type": data.get("type", ""),
-        "price": data.get("price", 0),
+        "type": product_type,
+        "price": base_price,
         "language": data.get("language", ""),
         "summary": str(data.get("description", ""))[:300],
     }
+    effective = _effective_price(base_price, promo)
+    if effective < base_price:
+        summary["current_price"] = effective
+        summary["promo_note"] = "Free for a limited time" if effective <= 0 else "Discounted by the current promotion"
+    # Only physical goods can be out of stock; digital products are always available.
+    if product_type in {"pendrive", "sdcard"}:
+        summary["in_stock"] = int(data.get("stockCount", 999) or 0) > 0
+    return summary
 
 
 async def _list_catalog_products(limit_count: int = 20) -> list[dict]:
@@ -564,13 +671,14 @@ async def _list_catalog_products(limit_count: int = 20) -> list[dict]:
         return []
 
     def _read() -> list[dict]:
+        promo = _active_sitewide_promo()
         products = []
         docs = db.collection("products").limit(limit_count).stream()
         for doc in docs:
             data = doc.to_dict() or {}
             if data.get("enabled", True) is False:
                 continue
-            products.append(_product_summary(doc.id, data))
+            products.append(_product_summary(doc.id, data, promo))
         return sorted(products, key=lambda item: (item.get("type", ""), item.get("title", "")))
 
     try:
@@ -596,18 +704,25 @@ async def _search_products(query: str) -> dict:
     if not results:
         return {"products": await _list_catalog_products(limit_count=6)}
 
+    promo = await asyncio.to_thread(_active_sitewide_promo)
     products = []
     for result in results:
-        products.append(
-            {
-                "product_id": result.get("product_id", ""),
-                "title": result.get("title", ""),
-                "type": result.get("type", ""),
-                "price": result.get("price", 0),
-                "language": result.get("language", ""),
-                "summary": result.get("text", "")[:300],
-            }
-        )
+        base_price = float(result.get("price", 0) or 0)
+        product = {
+            "product_id": result.get("product_id", ""),
+            "title": result.get("title", ""),
+            "type": result.get("type", ""),
+            "price": base_price,
+            "language": result.get("language", ""),
+            "summary": result.get("text", "")[:300],
+        }
+        effective = _effective_price(base_price, promo)
+        if effective < base_price:
+            product["current_price"] = effective
+            product["promo_note"] = (
+                "Free for a limited time" if effective <= 0 else "Discounted by the current promotion"
+            )
+        products.append(product)
     return {"products": products}
 
 
@@ -662,6 +777,8 @@ async def process_tool_call(
             return _json(await _search_policies(args.get("query", "")))
         if name == "search_products":
             return _json(await _search_products(args.get("query", "")))
+        if name == "get_support_tickets":
+            return _json(await _get_support_tickets(uid))
         return _json({"error": "Unknown tool"})
     except Exception as exc:
         logger.warning("MCP tool failed gracefully: %s", exc)

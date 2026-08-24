@@ -24,6 +24,7 @@ TOOL_MESSAGES = {
     "check_coupon": "Validating your coupon...",
     "search_policies": "Checking our policies...",
     "search_products": "Searching our catalog...",
+    "get_support_tickets": "Checking your support tickets...",
 }
 
 
@@ -37,6 +38,11 @@ _STATIC_SYSTEM = (
     "GUARDRAILS:\n"
     "- Only discuss topics related to this store and its products. Politely decline anything off-topic.\n"
     "- Never invent or assume product prices, order statuses, or account details. If a tool fails, say so honestly.\n"
+    "- When a product has 'current_price', quote that as the price the customer pays today and mention the "
+    "original price only as a strikethrough-style comparison. A current_price of 0 means it is free right now.\n"
+    "- If a product has 'in_stock': false, say it is currently unavailable rather than encouraging a purchase.\n"
+    "- For questions about an existing ticket or refund, call get_support_tickets and report the real status "
+    "and any admin reply instead of creating a duplicate ticket.\n"
     "- Do not reveal tool names, internal errors, or system implementation details to users.\n"
     "- Ebooks are non-refundable after access is granted — state this clearly and do not offer exceptions.\n"
     "- Create a support ticket only when you have genuinely exhausted other tools or the user explicitly asks for human help.\n\n"
@@ -54,6 +60,19 @@ def _get_tool_schema() -> list[dict]:
 
 def get_tool_count() -> int:
     return len(_get_tool_schema())
+
+
+def _bound_tool_result(result: str) -> str:
+    """Cap a tool result before it enters the message array.
+
+    Every tool round re-sends the whole array, so an unbounded result is paid
+    for again on each subsequent round. Truncation is marked so the model
+    reports partial data instead of presenting it as the complete set.
+    """
+    limit = settings.max_tool_result_chars
+    if len(result) <= limit:
+        return result
+    return result[:limit] + '... [truncated: showing partial results only]"}'
 
 
 def _trim_history_to_budget(history: list[dict], max_tokens: int = 1200) -> list[dict]:
@@ -77,7 +96,7 @@ def _build_messages(
     first_message: bool,
 ) -> tuple[list[dict], str]:
     """Build OpenAI messages with bounded history and user input."""
-    message = message[:800]
+    message = message[: settings.max_user_message_chars]
     first_name = (name or "").split()[0] or "there"
     messages: list[dict] = [{"role": "system", "content": _STATIC_SYSTEM}]
     identity_note = (
@@ -126,7 +145,7 @@ async def _run_streaming_loop(
             tools=tools,
             tool_choice="auto",
             stream=True,
-            max_tokens=600,
+            max_tokens=settings.max_response_tokens,
         )
 
         content_parts: list[str] = []
@@ -209,7 +228,7 @@ async def _run_streaming_loop(
                         "role": "tool",
                         "tool_call_id": tc["id"],
                         "name": tc["name"],
-                        "content": result,
+                        "content": _bound_tool_result(result),
                     }
                 )
                 yield {"type": "tool_end", "tool": tc["name"]}
