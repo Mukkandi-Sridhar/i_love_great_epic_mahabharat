@@ -32,6 +32,7 @@ from backend.api.webhook import router as webhook_router
 from backend.core.auth import verify_request_uid
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
+from backend.core.firestore_timeout import READ_TIMEOUT
 from backend.core.rate_limit import RATE_LIMIT_SINGLE_INSTANCE_WARNING, limiter
 from backend.mcp.server import warm_tool_cache
 from backend.rag.ingest import close_chroma, ingest_policies, ingest_products
@@ -143,7 +144,7 @@ def _get_active_product(db, product_id: str) -> dict:
     Prices are never trusted from the client — every endpoint that charges
     money looks the price up here instead of accepting it in the request body.
     """
-    doc = db.collection("products").document((product_id or "").strip()).get()
+    doc = db.collection("products").document((product_id or "").strip()).get(timeout=READ_TIMEOUT)
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Product not found")
     data = doc.to_dict() or {}
@@ -244,7 +245,7 @@ async def create_razorpay_order(request: Request, body: CreateRazorpayOrderReque
         coupon_code = (body.coupon_code or "").strip().upper() or None
         discount = 0.0
         if coupon_code:
-            coupon_snap = db.collection("coupons").document(coupon_code).get()
+            coupon_snap = db.collection("coupons").document(coupon_code).get(timeout=READ_TIMEOUT)
             if coupon_snap.exists:
                 discount = _coupon_discount_from_snapshot(coupon_snap.to_dict() or {}, base_price)
 
@@ -347,7 +348,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         intent_ref = None
         if razorpay_order_id:
             intent_ref = db.collection("payment_intents").document(razorpay_order_id)
-            intent_snap = intent_ref.get()
+            intent_snap = intent_ref.get(timeout=READ_TIMEOUT)
             if intent_snap.exists:
                 intent = intent_snap.to_dict() or {}
 
@@ -443,7 +444,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         product_snap = None
         if product_type in {"pendrive", "sdcard"}:
             product_ref = db.collection("products").document(product_id)
-            product_snap = product_ref.get()
+            product_snap = product_ref.get(timeout=READ_TIMEOUT)
             if product_snap.exists:
                 stock = (product_snap.to_dict() or {}).get("stockCount", 999)
                 if stock <= 0:
@@ -453,7 +454,7 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
         # client's copy would let a stale or placeholder catalog persist a dead
         # link onto a real purchase, leaving a paying customer with no book.
         if product is None:
-            product_doc = db.collection("products").document(product_id).get()
+            product_doc = db.collection("products").document(product_id).get(timeout=READ_TIMEOUT)
             product = (product_doc.to_dict() or {}) if product_doc.exists else {}
         download_link = (
             product.get("driveLink")
@@ -622,7 +623,7 @@ async def validate_coupon(request: Request, body: ValidateCouponRequest):
     def _read_coupon() -> dict:
         db = _db()
         coupon_ref = db.collection("coupons").document(body.code.upper())
-        coupon = coupon_ref.get()
+        coupon = coupon_ref.get(timeout=READ_TIMEOUT)
         if not coupon.exists:
             raise HTTPException(status_code=404, detail="Coupon not found")
 

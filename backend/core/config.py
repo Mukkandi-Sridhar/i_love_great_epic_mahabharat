@@ -77,6 +77,9 @@ class Settings:
     max_tool_rounds: int = _int_env("MAX_TOOL_ROUNDS", 5)
     auth_cache_ttl: int = _int_env("AUTH_CACHE_TTL", 1800)
     history_limit: int = _int_env("HISTORY_LIMIT", 12)
+    # Firestore's own default retry deadline is 300s, which turns an outage or
+    # a revoked credential into hung workers rather than a fast error.
+    firestore_timeout: int = _int_env("FIRESTORE_TIMEOUT", 15)
     max_response_tokens: int = _int_env("MAX_RESPONSE_TOKENS", 900)
     max_user_message_chars: int = _int_env("MAX_USER_MESSAGE_CHARS", 2000)
     max_tool_result_chars: int = _int_env("MAX_TOOL_RESULT_CHARS", 3500)

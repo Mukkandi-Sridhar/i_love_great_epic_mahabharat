@@ -11,7 +11,16 @@ service cloud.firestore {
 
     // ─── USER DATA ───────────────────────────────────────────────────────────
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.keys().hasAny(['isAdmin', 'blocked']);
+      // Privilege fields are backend-owned. A user may edit their own profile
+      // but may not introduce or change isAdmin/blocked: granting yourself
+      // isAdmin previously unlocked the whole admin API, and clearing blocked
+      // would undo a moderation action.
+      allow update: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['isAdmin', 'blocked']);
       // Admins can read any user profile and manage them
       allow read, update: if isAdmin();
 

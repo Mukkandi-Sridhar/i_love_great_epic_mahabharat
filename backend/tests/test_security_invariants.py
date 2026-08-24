@@ -126,6 +126,43 @@ def test_verification_fails_closed_when_secret_is_unconfigured(monkeypatch):
     assert exc.value.status_code == 503
 
 
+# ── Admin authorization ──────────────────────────────────────────────────────
+
+
+def test_admin_check_reads_only_the_admins_collection():
+    """Admin status must not be derived from any user-writable document.
+
+    Firestore rules let a user write their own /users/{uid} document, so
+    honouring a `users.isAdmin` flag there let anyone grant themselves the
+    entire admin API. The check must consult /admins/{uid} alone.
+    """
+    source = (PROJECT_ROOT / "backend" / "core" / "auth.py").read_text(encoding="utf-8")
+    start = source.index("def _is_admin()")
+    body = source[start : source.index("\n\n", start)]
+    # Comments explain the history of this check; only executable lines matter.
+    code = "\n".join(line.split("#", 1)[0] for line in body.splitlines())
+
+    assert '"admins"' in code, "admin check no longer reads the admins collection"
+    assert "isAdmin" not in code, (
+        "require_admin consults a user-writable isAdmin flag — a user can set "
+        "that on their own profile and escalate to full admin access"
+    )
+    assert '"users"' not in code, "admin check must not consult the users collection"
+
+
+def test_firestore_rules_block_self_granted_privileges():
+    """The rules must reject a user writing isAdmin/blocked on their own profile."""
+    rules = (PROJECT_ROOT / "frontend" / "firestore.rules").read_text(encoding="utf-8")
+    users_block = rules[rules.index("match /users/{uid}") : rules.index("match /orders_index")]
+
+    assert "isAdmin" in users_block and "blocked" in users_block, (
+        "the /users/{uid} rules do not mention the privilege fields at all"
+    )
+    assert "affectedKeys" in users_block, (
+        "no field-level constraint on profile updates — a user could set isAdmin"
+    )
+
+
 # ── Credential hygiene ───────────────────────────────────────────────────────
 
 

@@ -13,6 +13,7 @@ from firebase_admin import auth
 
 from backend.core.config import settings
 from backend.core.firebase import get_firestore_client
+from backend.core.firestore_timeout import READ_TIMEOUT
 
 
 _admin_cache: dict[str, float] = {}
@@ -97,7 +98,7 @@ async def check_user_not_blocked(uid: str) -> None:
         return
 
     def _read() -> bool:
-        doc = db.collection("users").document(uid).get()
+        doc = db.collection("users").document(uid).get(timeout=READ_TIMEOUT)
         return (doc.to_dict() or {}).get("blocked", False) if doc.exists else False
 
     try:
@@ -146,18 +147,12 @@ async def require_admin(request: Request) -> str:
             del _admin_cache[oldest]
 
     def _is_admin() -> bool:
-        refs = [
-            db.collection("admins").document(uid),
-            db.collection("users").document(uid),
-        ]
-        for doc in db.get_all(refs):
-            if not doc.exists:
-                continue
-            if doc.reference.parent.id == "admins":
-                return True
-            if (doc.to_dict() or {}).get("isAdmin") is True:
-                return True
-        return False
+        # Admin status comes from /admins/{uid} only, which security rules make
+        # server-write-only. It previously also honoured users/{uid}.isAdmin —
+        # but a user may write their own profile document, so setting that flag
+        # on themselves granted the entire admin API.
+        doc = db.collection("admins").document(uid).get(timeout=READ_TIMEOUT)
+        return doc.exists
 
     if not await asyncio.to_thread(_is_admin):
         raise HTTPException(status_code=403, detail="Not an admin")
