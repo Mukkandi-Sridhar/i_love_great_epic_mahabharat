@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -706,11 +707,27 @@ async def _list_catalog_products(limit_count: int = 20) -> list[dict]:
         return []
 
 
+# Whole-phrase patterns only. Substring matching previously fired on any word
+# that merely contained a keyword — "listen", "playlist" and "offline" all
+# contain "list"/"line" — dumping the whole catalog for a targeted question.
+_BROAD_PRODUCT_PATTERNS = re.compile(
+    r"\b("
+    r"all\s+(?:the\s+)?products?|all\s+(?:the\s+)?(?:books?|items?|titles?)"
+    r"|what\s+(?:products?|books?|items?|titles?)\s+(?:do|are|have)"
+    r"|which\s+products?\s+(?:do|are)"
+    r"|show\s+(?:me\s+)?(?:everything|all)"
+    r"|catalog(?:ue)?|full\s+range|product\s+list|complete\s+list"
+    r"|list\s+(?:all|your|the|every)"
+    r"|what\s+(?:do|else\s+do)\s+you\s+(?:sell|offer|have)"
+    r"|everything\s+you\s+(?:sell|offer|have)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
 def _is_broad_product_query(query: str) -> bool:
-    """Detect catalog-list questions that should not depend on vector similarity."""
-    normalized = (query or "").lower()
-    broad_terms = {"available", "all products", "catalog", "list", "options", "what products", "which products"}
-    return any(term in normalized for term in broad_terms)
+    """Detect catalog-listing questions that should bypass vector similarity."""
+    return bool(_BROAD_PRODUCT_PATTERNS.search(query or ""))
 
 
 async def _search_products(query: str) -> dict:

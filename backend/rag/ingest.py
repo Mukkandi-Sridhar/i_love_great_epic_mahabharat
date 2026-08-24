@@ -158,41 +158,70 @@ def _section_for_offset(headers: list[tuple[int, str]], offset: int) -> str:
     return section
 
 
+def _split_into_sections(text: str) -> list[tuple[str, str]]:
+    """Split policy markdown into (section_title, body) pairs.
+
+    Only `##`-level headings start a new section; deeper `###` headings stay
+    with their parent so related rules (for example the digital and physical
+    refund rules) are retrieved together instead of as disconnected fragments.
+    """
+    sections: list[tuple[str, list[str]]] = []
+    current_title = "General"
+    current_lines: list[str] = []
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        is_section_heading = stripped.startswith("##") and not stripped.startswith("###")
+        if is_section_heading:
+            if current_lines:
+                sections.append((current_title, current_lines))
+            current_title = stripped.lstrip("#").strip() or "General"
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        sections.append((current_title, current_lines))
+
+    return [(title, "\n".join(lines).strip()) for title, lines in sections if "\n".join(lines).strip()]
+
+
 def _chunk_policy_text(text: str) -> list[dict[str, Any]]:
-    """Split policy text into overlapping word-boundary chunks with section metadata."""
+    """Chunk policy text by section, sub-splitting only oversized sections.
+
+    Chunking the raw text on a fixed window let a chunk straddle two headings,
+    so its recorded section was whichever heading it happened to start under —
+    a chunk labelled "Company Overview" could carry privacy-policy text, and
+    sections whose heading fell mid-window were never labelled at all. The
+    section is the unit here, so every chunk's label matches its content.
+    """
     size = max(100, settings.chunk_size)
     overlap = min(max(0, settings.chunk_overlap), size - 1)
-    headers: list[tuple[int, str]] = []
-    cursor = 0
-
-    for line in text.splitlines(keepends=True):
-        stripped = line.strip()
-        if stripped.startswith("##"):
-            headers.append((cursor, stripped.lstrip("#").strip() or "General"))
-        cursor += len(line)
 
     chunks: list[dict[str, Any]] = []
-    start = 0
-    while start < len(text):
-        end = min(len(text), start + size)
-        if end < len(text):
-            boundary = text.rfind(" ", start + 1, end)
-            if boundary > start + int(size * 0.5):
-                end = boundary
+    for title, body in _split_into_sections(text):
+        # Prefix the heading so the embedding carries the section's topic.
+        block = f"{title}\n{body}" if title != "General" else body
 
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(
-                {
-                    "text": chunk,
-                    "section": _section_for_offset(headers, start),
-                    "chunk_index": len(chunks),
-                }
-            )
+        if len(block) <= size:
+            chunks.append({"text": block, "section": title, "chunk_index": len(chunks)})
+            continue
 
-        if end >= len(text):
-            break
-        start = max(start + 1, end - overlap)
+        start = 0
+        while start < len(block):
+            end = min(len(block), start + size)
+            if end < len(block):
+                boundary = block.rfind(" ", start + 1, end)
+                if boundary > start + int(size * 0.5):
+                    end = boundary
+
+            piece = block[start:end].strip()
+            if piece:
+                chunks.append({"text": piece, "section": title, "chunk_index": len(chunks)})
+
+            if end >= len(block):
+                break
+            start = max(start + 1, end - overlap)
 
     return chunks
 

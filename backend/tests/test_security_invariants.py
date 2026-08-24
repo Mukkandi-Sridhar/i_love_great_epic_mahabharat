@@ -25,7 +25,8 @@ from backend import main
 from backend.agent.brain import _bound_tool_result
 from backend.core.config import settings
 from backend.main import _coupon_discount_from_snapshot, _verify_razorpay_signature
-from backend.mcp.server import _effective_price, list_tools
+from backend.mcp.server import _effective_price, _is_broad_product_query, list_tools
+from backend.rag.ingest import _chunk_policy_text
 
 from fastapi import HTTPException
 
@@ -198,6 +199,91 @@ def test_price_is_unchanged_without_an_active_promo():
 
 def test_effective_price_is_never_negative():
     assert _effective_price(499, {"type": "fixed", "value": 10**6}) == 0
+
+
+# ── Product query routing ────────────────────────────────────────────────────
+# A broad query returns the whole catalog; a specific one runs semantic search.
+# Misrouting a specific question wastes tokens and answers with noise.
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "what products do you have",
+        "show me all products",
+        "list all your books",
+        "what do you sell",
+        "your catalog please",
+        "everything you offer",
+        "show me everything",
+    ],
+)
+def test_catalog_questions_route_to_the_full_listing(query):
+    assert _is_broad_product_query(query) is True
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # Each of these contains a keyword only as a substring — "listen",
+        # "playlist" and "offline" all embed "list"/"line".
+        "can I listen offline?",
+        "I want to listen to Mahabharat in Hindi",
+        "do you have an audio playlist",
+        "offline access?",
+        "which pendrive is best for my father",
+        "is the Telugu pendrive in stock",
+        "price of the 64GB one",
+    ],
+)
+def test_specific_questions_are_not_misrouted_to_the_full_catalog(query):
+    assert _is_broad_product_query(query) is False
+
+
+# ── Policy retrieval ─────────────────────────────────────────────────────────
+# search_policies reports the section a rule came from, so a chunk carrying
+# another section's text would attribute the wrong policy to the customer.
+
+POLICY_DOC = """# Knowledge Base
+
+## 1. SHIPPING
+- Domestic orders ship in 2 days.
+
+## 2. REFUNDS
+### Digital Products:
+- Digital sales are final.
+### Physical Products:
+- Return window is 7 days.
+
+## 3. SUPPORT
+- Reply within 24 hours.
+"""
+
+
+def test_every_policy_chunk_is_labelled_with_its_own_section():
+    for chunk in _chunk_policy_text(POLICY_DOC):
+        headings = {
+            line.strip().lstrip("#").strip()
+            for line in chunk["text"].splitlines()
+            if line.strip().startswith("##") and not line.strip().startswith("###")
+        }
+        assert headings <= {chunk["section"]}, (
+            f"Chunk labelled {chunk['section']!r} contains other sections {headings}"
+        )
+
+
+def test_all_policy_sections_are_represented():
+    sections = {chunk["section"] for chunk in _chunk_policy_text(POLICY_DOC)}
+    for expected in ("1. SHIPPING", "2. REFUNDS", "3. SUPPORT"):
+        assert expected in sections, f"{expected} was dropped from the index"
+
+
+def test_related_refund_rules_stay_in_one_chunk():
+    """Digital and physical refund rules must not be retrieved in isolation."""
+    refund = [c for c in _chunk_policy_text(POLICY_DOC) if c["section"] == "2. REFUNDS"]
+    assert len(refund) == 1
+    assert "Digital sales are final" in refund[0]["text"]
+    assert "Return window is 7 days" in refund[0]["text"]
 
 
 # ── Agent context growth ─────────────────────────────────────────────────────
