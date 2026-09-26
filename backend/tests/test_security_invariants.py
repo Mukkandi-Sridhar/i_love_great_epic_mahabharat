@@ -338,3 +338,21 @@ def test_large_tool_results_are_capped_and_marked_truncated():
     assert len(bounded) <= settings.max_tool_result_chars + 64
     # The model must be able to tell the data is partial rather than complete.
     assert "truncated" in bounded
+
+
+def test_storage_rules_derive_admin_from_the_admins_collection():
+    """Storage admin rights must not come from a user-writable profile field."""
+    rules = (PROJECT_ROOT / "frontend" / "storage.rules").read_text(encoding="utf-8")
+    fn = rules[rules.index("function isAdmin()") : rules.index("}", rules.index("function isAdmin()"))]
+    assert "/admins/" in fn, "storage isAdmin no longer checks the admins collection"
+    assert "/users/" not in fn and "role" not in fn, (
+        "storage isAdmin reads the user's own profile — any customer can set "
+        "that field and gain upload rights over media and ebooks"
+    )
+
+
+def test_coupons_are_not_publicly_readable():
+    """Public coupon reads would expose every code and bypass the rate limit."""
+    rules = (PROJECT_ROOT / "frontend" / "firestore.rules").read_text(encoding="utf-8")
+    block = rules[rules.index("match /coupons/{code}") : rules.index("match /settings/")]
+    assert "if true" not in block

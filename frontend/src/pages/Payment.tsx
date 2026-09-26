@@ -135,7 +135,8 @@ const Payment = () => {
   // and the audit entry are still written exactly as for a paid order.
   const isFree = finalPrice <= 0 && basePrice > 0;
 
-  const applyCoupon = async (code: string, { silent = false }: { silent?: boolean } = {}) => {
+  const applyCoupon = async (rawCode: string, { silent = false }: { silent?: boolean } = {}) => {
+    const code = rawCode.trim().toUpperCase();
     if (!code) return false;
     if (!silent) setValidatingCoupon(true);
     try {

@@ -2,10 +2,12 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Helper function to check if user is admin
+    // Admin status comes from /admins/{uid} only, which no client can write.
+    // Never derive it from /users/{uid}: users can edit their own profile, so a
+    // `role` field there would let any customer grant themselves upload rights.
     function isAdmin() {
-      return request.auth != null && 
-             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return request.auth != null &&
+             firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
     }
     
     // Media files (images, banners)
@@ -14,10 +16,11 @@ service firebase.storage {
       allow write: if isAdmin(); // Only admins can upload
     }
     
-    // Ebook files
+    // Ebook files: readable by admins and by users holding a purchase, which
+    // the backend writes to /users/{uid}/purchases/{productId}.
     match /files/ebooks/{productId}/{allPaths=**} {
-      allow read: if request.auth != null && 
-                    firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/library/$(productId));
+      allow read: if isAdmin() || (request.auth != null &&
+                    firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/purchases/$(productId)));
       allow write: if isAdmin();
     }
   }
