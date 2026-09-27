@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from firebase_admin import firestore
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -200,8 +200,8 @@ class CreateRazorpayOrderRequest(BaseModel):
 
 
 class ValidateCouponRequest(BaseModel):
-    code: str
-    amount: float
+    code: str = Field(..., min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    amount: float = Field(..., ge=0, le=1_000_000)
 
 
 def _verify_razorpay_signature(
@@ -406,6 +406,26 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
                 discount_value = _apply_coupon(db.transaction(), coupon_ref, base_price)
             final_amount = max(0.0, base_price - discount_value)
 
+        # A free grant costs nothing to repeat, so without this one account
+        # could claim the same physical product over and over, draining stock
+        # and creating shipments. One free claim per product per account.
+        if is_free_intent:
+            existing = (
+                db.collection("users").document(body.uid)
+                .collection("purchases").document(product_id)
+                .get(timeout=READ_TIMEOUT)
+            )
+            if existing.exists and (existing.to_dict() or {}).get("status", "active") == "active":
+                raise HTTPException(status_code=409, detail="You already have this product")
+
+        # The intent path fixed the discount at order creation, but the coupon's
+        # usage still has to be counted here or maxUses is never enforced.
+        intent_coupon_ref = None
+        if intent is not None and coupon_code and discount_value > 0:
+            candidate = db.collection("coupons").document(coupon_code)
+            if candidate.get(timeout=READ_TIMEOUT).exists:
+                intent_coupon_ref = candidate
+
         transaction_id = (
             transaction_details.get("transaction_id")
             or transaction_details.get("gateway_payment_id")
@@ -592,6 +612,8 @@ async def complete_order(request: Request, body: CompleteOrderRequest):
             batch.update(product_ref, {"stockCount": firestore.Increment(-1)})
         if intent_ref is not None:
             batch.set(intent_ref, {"used": True, "usedAt": firestore.SERVER_TIMESTAMP}, merge=True)
+        if intent_coupon_ref is not None:
+            batch.update(intent_coupon_ref, {"usedCount": firestore.Increment(1)})
         batch.set(notification_ref, {**notification, "read": False, "createdAt": firestore.SERVER_TIMESTAMP})
         batch.set(audit_ref, audit_entry)
         batch.commit()
@@ -642,7 +664,7 @@ async def validate_coupon(request: Request, body: ValidateCouponRequest):
 
         coupon_type = data.get("type", "fixed")
         coupon_value = data.get("value", 0)
-        discount = (body.amount * coupon_value / 100) if coupon_type == "percent" else coupon_value
+        discount = _coupon_discount_from_snapshot(data, body.amount)
 
         return {
             "valid": True,

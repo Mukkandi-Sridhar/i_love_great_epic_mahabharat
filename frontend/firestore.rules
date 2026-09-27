@@ -13,14 +13,14 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow create: if request.auth != null && request.auth.uid == uid
-        && !request.resource.data.keys().hasAny(['isAdmin', 'blocked']);
+        && !request.resource.data.keys().hasAny(['isAdmin', 'blocked', 'role']);
       // Privilege fields are backend-owned. A user may edit their own profile
       // but may not introduce or change isAdmin/blocked: granting yourself
       // isAdmin previously unlocked the whole admin API, and clearing blocked
       // would undo a moderation action.
       allow update: if request.auth != null && request.auth.uid == uid
         && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['isAdmin', 'blocked']);
+              .hasAny(['isAdmin', 'blocked', 'role']);
       // Admins can read any user profile and manage them
       allow read, update: if isAdmin();
 
@@ -59,7 +59,8 @@ service cloud.firestore {
 
     // tickets: users can submit; admins can read/update; backend manages
     match /tickets/{ticketId} {
-      allow create: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid;
       allow read, update: if isAdmin();
       allow delete: if isAdmin();
     }
@@ -70,10 +71,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // coupons: admins can manage; public can read for validation
+    // coupons: admin only. Customers validate codes through the backend's
+    // rate-limited /validate-coupon; public reads would let anyone list every
+    // code (including private ones) or test guesses without a limit.
     match /coupons/{code} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     // settings: everyone can read app settings; admins can write
